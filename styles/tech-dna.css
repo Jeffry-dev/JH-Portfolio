@@ -1,0 +1,738 @@
+/* Technical DNA visualization (components/skills/tech-dna.tsx). Owned by the Technical DNA work.
+   Colors come only from theme tokens, so both themes work without overrides.
+   Phones/tablets: stacked domain cards with wrapping chips. Desktop (64rem+): a hub, four
+   domain columns with tree spines, SVG wiring, and the info panel under the short columns. */
+
+/* ==================================================================
+   Entrance: hub, then domain headers, then technologies.
+   The root carries data-reveal but does not fade itself; only its stages do.
+   ================================================================== */
+.dna[data-reveal] {
+  transition: none;
+}
+
+.js .dna[data-reveal]:not(.is-revealed) {
+  opacity: 1;
+  transform: none;
+}
+
+.dna-stage {
+  transition:
+    opacity 0.5s var(--ease-out-quart),
+    transform 0.7s var(--ease-out-expo);
+  transition-delay: var(--dna-delay, 0ms);
+}
+
+.js .dna[data-reveal]:not(.is-revealed) .dna-stage {
+  opacity: 0;
+  transform: translate3d(0, 8px, 0);
+}
+
+.js.reveal-fallback .dna[data-reveal] .dna-stage {
+  opacity: 1;
+  transform: none;
+}
+
+/* Instructions (and wire sockets) that only apply once the explorer is interactive. */
+html:not(.js) .dna-js-only,
+html:not(.js) .dna-hub::after,
+html:not(.js) .dna-head::before {
+  display: none !important;
+}
+
+/* ==================================================================
+   Base layout (phones and tablets)
+   ================================================================== */
+.dna-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+@media (width >= 40rem) {
+  .dna-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+  }
+}
+
+.dna-domain {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--color-line);
+  border-radius: 1rem;
+  background-color: color-mix(in srgb, var(--color-bg-raised) 60%, transparent);
+}
+
+@media (width >= 40rem) {
+  .dna-domain {
+    padding: 1.25rem;
+  }
+}
+
+.dna-head {
+  margin-bottom: 0.875rem;
+}
+
+.dna-head h3,
+.dna-head-icon {
+  transition:
+    color 200ms var(--ease-out-quart),
+    border-color 200ms var(--ease-out-quart);
+}
+
+.dna-lanes {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.dna-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.dna-row-label {
+  margin: 1rem 0 0.5rem;
+}
+
+.dna-lane > .dna-row-label:first-child {
+  margin-top: 0;
+}
+
+.dna-panel {
+  grid-column: 1 / -1;
+  min-height: 14rem;
+}
+
+@media (width >= 40rem) {
+  .dna-panel {
+    min-height: 12rem;
+  }
+}
+
+/* ==================================================================
+   Technology chips
+   ================================================================== */
+.dna-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  max-width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-line-strong);
+  border-radius: 0.5rem;
+  background-color: var(--color-surface);
+  color: var(--color-fg);
+  font-size: 0.875rem;
+  line-height: 1.25;
+  text-align: left;
+  box-shadow: 0 0 0 3px var(--dna-ring, transparent);
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    color 200ms var(--ease-out-quart),
+    background-color 200ms var(--ease-out-quart),
+    border-color 200ms var(--ease-out-quart),
+    box-shadow 200ms var(--ease-out-quart);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .dna-chip:hover {
+    border-color: color-mix(in srgb, var(--color-tint) 28%, transparent);
+  }
+}
+
+/* Active: the technology being explained. */
+.dna-row[data-state="active"] .dna-chip {
+  border-color: var(--color-accent);
+  background-color: var(--color-accent-muted);
+}
+
+/* Connected: shares a project or a role with the active skill. */
+.dna-row[data-state="linked"] .dna-chip {
+  border-color: color-mix(in srgb, var(--color-accent) 60%, var(--color-line-strong));
+}
+
+/* Not linked (other domains): muted with color tokens (not opacity), so the text keeps AA contrast. */
+.dna-row[data-state="dim"] .dna-chip {
+  border-color: var(--color-line);
+  /* Opaque, so links pass cleanly behind it. */
+  background-color: color-mix(in srgb, var(--color-surface) 35%, var(--color-bg-raised));
+  color: var(--color-fg-subtle);
+}
+
+/* Pinned selection (aria-pressed) keeps a soft ring even while another node is previewed. */
+.dna-chip[aria-pressed="true"] {
+  --dna-ring: color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+
+/* Port: where a connection lands on a linked chip. Absolutely placed, so it never shifts layout. */
+.dna-port {
+  position: absolute;
+  top: 50%;
+  left: -4px;
+  width: 7px;
+  height: 7px;
+  margin-top: -3.5px;
+  border-radius: 9999px;
+  background-color: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-bg-raised);
+  opacity: 0;
+  transform: scale(0.4);
+  transition:
+    opacity 160ms var(--ease-out-quart),
+    transform 240ms var(--ease-out-expo);
+}
+
+.dna-row[data-state="linked"] .dna-port {
+  opacity: 1;
+  transform: none;
+  transition-delay: 180ms;
+}
+
+/* ==================================================================
+   Domain header states
+   ================================================================== */
+.dna-domain[data-state="active"] .dna-head-icon {
+  border-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
+  color: var(--color-accent);
+}
+
+.dna-domain[data-state="dim"] .dna-head h3 {
+  color: var(--color-fg-subtle);
+}
+
+/* ==================================================================
+   Info panel content
+   ================================================================== */
+
+/* Sources and connections read as sentences on small screens (compact docked panel)... */
+.dna-sources,
+.dna-sources > li,
+.dna-tags,
+.dna-tag {
+  display: inline;
+}
+
+.dna-sources > li:not(:last-child)::after,
+.dna-tag:not(:last-child)::after {
+  content: ", ";
+  color: var(--color-fg-muted);
+}
+
+.dna-source {
+  color: var(--color-fg);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--color-fg) 30%, transparent);
+  text-underline-offset: 3px;
+  transition:
+    color 200ms var(--ease-out-quart),
+    text-decoration-color 200ms var(--ease-out-quart);
+}
+
+.dna-source:hover {
+  color: var(--color-accent);
+  text-decoration-color: currentColor;
+}
+
+.dna-source-kind,
+.dna-source-icon {
+  display: none;
+}
+
+.dna-tags {
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--color-fg-muted);
+}
+
+/* Legend swatches mirror the chip states. The plain swatch is the default chip ("Same domain"). */
+.dna-key {
+  position: relative;
+  flex-shrink: 0;
+  width: 1.125rem;
+  height: 0.75rem;
+  border: 1px solid var(--color-line-strong);
+  border-radius: 0.25rem;
+  background-color: var(--color-surface);
+}
+
+.dna-key[data-key="active"] {
+  border-color: var(--color-accent);
+  background-color: var(--color-accent-muted);
+}
+
+.dna-key[data-key="linked"] {
+  border-color: color-mix(in srgb, var(--color-accent) 60%, var(--color-line-strong));
+}
+
+.dna-key[data-key="linked"]::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: -3px;
+  width: 5px;
+  height: 5px;
+  margin-top: -2.5px;
+  border-radius: 9999px;
+  background-color: var(--color-accent);
+}
+
+.dna-key[data-key="dim"] {
+  border-color: var(--color-line);
+  background-color: transparent;
+}
+
+.dna-key-line {
+  flex-shrink: 0;
+  width: 1.125rem;
+  height: 1px;
+  background-color: var(--color-accent);
+}
+
+.dna-kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.25rem;
+  height: 1.125rem;
+  padding: 0 0.25rem;
+  border: 1px solid var(--color-line-strong);
+  border-radius: 0.25rem;
+  background-color: color-mix(in srgb, var(--color-tint) 4%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  line-height: 1;
+  color: var(--color-fg-muted);
+}
+
+/* Docked panel on phones and tablets: only while a selection is pinned (never for a hover or
+   focus preview), and only when the viewport is tall enough to spare the room, so short
+   screens and desktop zoomed to 200% keep the panel in its own slot. Capped at under half the
+   viewport and scrollable. tech-dna.tsx writes the docked height to --dna-dock-h, and <html>
+   reserves it as scroll padding, so a chip that gets keyboard focus scrolls clear of the panel.
+   The panel settles back into its own slot at the end of the cards. */
+@media (width < 64rem) and (height >= 35rem) {
+  .dna-panel[data-pinned] {
+    position: sticky;
+    bottom: max(0.75rem, env(safe-area-inset-bottom));
+    z-index: 5;
+    max-height: 45vh;
+    max-height: 45svh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    box-shadow:
+      0 18px 48px -18px var(--shadow-color),
+      0 0 0 1px color-mix(in srgb, var(--color-accent) 16%, transparent);
+    animation: dna-dock 260ms var(--ease-out-quart);
+  }
+
+  html:has(.dna-panel[data-pinned]) {
+    scroll-padding-bottom: calc(var(--dna-dock-h, 0px) + 1.5rem);
+  }
+}
+
+@keyframes dna-dock {
+  from {
+    opacity: 0.4;
+    transform: translate3d(0, 10px, 0);
+  }
+}
+
+/* ==================================================================
+   SVG wiring (desktop only; the SVG is display:none below 64rem)
+   ================================================================== */
+/* Paths use pathLength="1". The dash pattern exists only while a line draws in
+   (animation fill: backwards), so a finished line is a plain solid stroke. */
+.dna-wire {
+  fill: none;
+  stroke: var(--color-line-strong);
+  stroke-width: 1;
+  transition:
+    stroke 240ms var(--ease-out-quart),
+    opacity 240ms var(--ease-out-quart);
+}
+
+.js .dna[data-reveal]:not(.is-revealed) .dna-wire {
+  opacity: 0;
+}
+
+.js .dna.is-revealed .dna-wire {
+  animation: dna-draw 900ms var(--ease-out-expo) var(--dna-delay, 0ms) backwards;
+}
+
+.js.reveal-fallback .dna[data-reveal] .dna-wire {
+  opacity: 1;
+}
+
+.dna-wire[data-state="active"] {
+  stroke: var(--color-fg-subtle);
+}
+
+.dna-wire[data-state="dim"] {
+  opacity: 0.45;
+}
+
+/* Links for the active technology draw in from it. */
+.dna-link {
+  fill: none;
+  stroke: var(--color-accent);
+  stroke-width: 1.25;
+  opacity: 0.85;
+  animation: dna-draw 420ms var(--ease-out-quart) backwards;
+}
+
+@keyframes dna-draw {
+  from {
+    stroke-dasharray: 1 1;
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dasharray: 1 1;
+    stroke-dashoffset: 0;
+  }
+}
+
+/* ==================================================================
+   Desktop: hub + domain columns with tree spines
+   ================================================================== */
+@media (width >= 64rem) {
+  .dna-graph {
+    padding: 2.25rem 2rem 2rem;
+    border: 1px solid var(--color-line);
+    border-radius: 1.5rem;
+    background-color: color-mix(in srgb, var(--color-bg-raised) 60%, transparent);
+  }
+
+  .dna-dots {
+    background-image: radial-gradient(var(--grid-dot) 1px, transparent 1px);
+    background-size: 22px 22px;
+    background-position: 11px 11px;
+    -webkit-mask-image: radial-gradient(ellipse 85% 70% at 50% 30%, #000 25%, transparent 80%);
+    mask-image: radial-gradient(ellipse 85% 70% at 50% 30%, #000 25%, transparent 80%);
+  }
+
+  /* Sockets where the hub wires leave and land. */
+  .dna-hub::after,
+  .dna-head::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    width: 7px;
+    height: 7px;
+    margin-left: -3.5px;
+    border: 1px solid var(--color-line-strong);
+    border-radius: 9999px;
+    background-color: var(--color-bg-raised);
+    transition:
+      background-color 200ms var(--ease-out-quart),
+      border-color 200ms var(--ease-out-quart);
+  }
+
+  .dna-hub::after {
+    bottom: -4px;
+  }
+
+  .dna-head::before {
+    top: -4px;
+  }
+
+  .dna-domain[data-state="active"] .dna-head::before {
+    border-color: var(--color-accent);
+    background-color: var(--color-accent);
+  }
+
+  .dna-grid {
+    grid-template-columns: repeat(var(--dna-tracks, 4), minmax(0, 1fr));
+    grid-template-rows: auto 1fr;
+    column-gap: 1.25rem;
+    row-gap: 1.75rem;
+  }
+
+  .dna-domain {
+    grid-column: var(--dna-col, auto) / span var(--dna-span, 1);
+    grid-row: 1 / span var(--dna-rows, 1);
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+  }
+
+  /* Icon center sits at 24px from the header's left edge: the spine continues from there. */
+  .dna-head {
+    margin-bottom: 0;
+    padding: 0.4375rem 0.75rem 0.4375rem 0.5625rem;
+    border: 1px solid var(--color-line-strong);
+    border-radius: 0.75rem;
+    background-color: var(--color-surface);
+  }
+
+  .dna-lanes {
+    display: grid;
+    grid-template-columns: repeat(var(--dna-lanes, 1), minmax(0, 1fr));
+    gap: 0 1.25rem;
+  }
+
+  .dna-lane {
+    --spine-x: 24px;
+    --indent: 38px;
+    position: relative;
+    padding-top: 0.75rem;
+  }
+
+  /* Stub from the header down to the first row. */
+  .dna-lane::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: var(--spine-x);
+    width: 1px;
+    height: 0.75rem;
+    background-color: var(--color-line-strong);
+    transition: background-color 200ms var(--ease-out-quart);
+  }
+
+  .dna-list {
+    display: block;
+  }
+
+  /* Rows touch each other, so their segments form one continuous spine. */
+  .dna-row {
+    position: relative;
+    margin: 0;
+    padding: 3px 0 3px var(--indent);
+  }
+
+  .dna-row::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: var(--spine-x);
+    width: 1px;
+    background-color: var(--color-line-strong);
+    transition: background-color 200ms var(--ease-out-quart);
+  }
+
+  .dna-row[data-last]::before {
+    bottom: 50%;
+  }
+
+  /* Tick from the spine to the chip. */
+  .dna-row::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: var(--spine-x);
+    width: calc(var(--indent) - var(--spine-x));
+    height: 1px;
+    background-color: var(--color-line-strong);
+    transition: background-color 200ms var(--ease-out-quart);
+  }
+
+  .dna-row[data-state="active"]::after {
+    background-color: var(--color-accent);
+  }
+
+  .dna-row[data-state="linked"]::after {
+    background-color: color-mix(in srgb, var(--color-accent) 60%, var(--color-line-strong));
+  }
+
+  .dna-row[data-state="dim"]::after {
+    background-color: var(--color-line);
+  }
+
+  .dna-domain[data-state="dim"] .dna-row::before,
+  .dna-domain[data-state="dim"] .dna-lane::before {
+    background-color: var(--color-line);
+  }
+
+  /* Group label rows: a diamond junction on the spine instead of a tick. */
+  .dna-row-label,
+  .dna-lane > .dna-row-label:first-child {
+    margin: 0;
+    padding-top: 0.625rem;
+    padding-bottom: 0.5rem;
+  }
+
+  .dna-row-label::after {
+    left: calc(var(--spine-x) - 3px);
+    width: 7px;
+    height: 7px;
+    margin-top: -3.5px;
+    border: 1px solid var(--color-line-strong);
+    background-color: var(--color-bg-raised);
+    transform: rotate(45deg);
+  }
+
+  .dna-chip {
+    min-height: 2.25rem;
+    padding: 0.375rem 0.625rem;
+    font-size: 0.8125rem;
+  }
+
+  .dna-row[data-port="right"] .dna-port {
+    left: auto;
+    right: -4px;
+  }
+
+  /* Reserved height fits the longest entry (8 connections), so hovering never shifts the page. */
+  .dna-panel {
+    grid-column: var(--dna-panel-col, -3) / span var(--dna-panel-span, 2);
+    grid-row: 2;
+    align-self: stretch;
+    min-height: 23rem;
+    padding: 1.25rem;
+  }
+
+  /* ...and as a list of rows plus tags on desktop. */
+  .dna-sources {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+  }
+
+  .dna-sources > li {
+    display: block;
+  }
+
+  .dna-sources > li:not(:last-child)::after,
+  .dna-tag:not(:last-child)::after {
+    content: none;
+  }
+
+  .dna-source {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 1.75rem;
+    font-size: 0.9375rem;
+    text-decoration: none;
+  }
+
+  .dna-source-kind {
+    display: inline;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    color: var(--color-fg-subtle);
+  }
+
+  .dna-source-icon {
+    display: block;
+    width: 0.875rem;
+    height: 0.875rem;
+    color: var(--color-fg-subtle);
+    transition:
+      color 200ms var(--ease-out-quart),
+      transform 200ms var(--ease-out-quart);
+  }
+
+  .dna-source:hover .dna-source-icon {
+    color: var(--color-accent);
+    transform: translate3d(1px, 1px, 0);
+  }
+
+  .dna-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+  }
+
+  .dna-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.3125rem 0.5rem;
+    border: 1px solid var(--color-line);
+    border-radius: 0.375rem;
+    background-color: color-mix(in srgb, var(--color-tint) 3%, transparent);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    line-height: 1;
+    color: var(--color-fg-muted);
+  }
+}
+
+/* 64rem to 80rem: five lane columns are narrow, so tighten the frame, the gaps, the spine
+   indent and the chips, and labels such as "Microsoft SQL Server" stay on one line.
+   The header keeps its icon centered over the spine (20px from its left edge here). */
+@media (width >= 64rem) and (width < 80rem) {
+  .dna-graph {
+    padding-inline: 1rem;
+  }
+
+  .dna-grid {
+    column-gap: 0.75rem;
+  }
+
+  .dna-lanes {
+    column-gap: 0.75rem;
+  }
+
+  .dna-head {
+    padding-left: 0.3125rem;
+  }
+
+  .dna-lane {
+    --spine-x: 20px;
+    --indent: 30px;
+  }
+
+  .dna-chip {
+    padding-inline: 0.4375rem;
+    font-size: 0.75rem;
+  }
+}
+
+@media (width >= 80rem) {
+  .dna-panel {
+    min-height: 21rem;
+  }
+}
+
+/* Touch screens at desktop widths (e.g. tablets in landscape) keep 44px targets. */
+@media (width >= 64rem) and (pointer: coarse) {
+  .dna-chip,
+  .dna-clear,
+  .dna-source {
+    min-height: 2.75rem;
+  }
+}
+
+/* ==================================================================
+   Reduced motion: final states, no draw-in, no cascade delays.
+   ================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  .dna-stage,
+  .dna-port,
+  .dna-row[data-state="linked"] .dna-port {
+    transition-delay: 0ms !important;
+  }
+  .js .dna[data-reveal]:not(.is-revealed) .dna-stage {
+    transform: none;
+  }
+  .dna-wire,
+  .dna-link,
+  .dna-panel {
+    animation: none !important;
+  }
+}
+
+/* Printing: everything visible, nothing docked. */
+@media print {
+  .dna-stage {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .dna-wire {
+    opacity: 1 !important;
+    animation: none !important;
+  }
+  .dna-panel {
+    position: static !important;
+    max-height: none !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+  }
+}
