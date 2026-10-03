@@ -1,0 +1,110 @@
+/* Hero terminal + status card (components/hero/*). Owned by the terminal work. */
+
+/* ------------------------------------------------------------------
+   Token pins
+   .dark-surface keeps the terminal dark in both themes but does not pin every
+   token. The ones the terminal uses beyond that set are pinned here, so status
+   and error lines keep their dark-theme contrast when the page is light.
+   ------------------------------------------------------------------ */
+.terminal {
+  --color-ok: #4ade80;
+  --color-danger: #f87171;
+  /* ls-style output (directory listings, stack). 9:1 on the terminal background. */
+  --term-list: #9fb7d9;
+}
+
+/* ------------------------------------------------------------------
+   Scripted intro
+   Lines that have not been typed yet are removed from layout only while JS runs
+   (html.js), so visitors without JavaScript see the finished session.
+   If hydration never happens, .reveal-fallback shows everything as well.
+   ------------------------------------------------------------------ */
+.js:not(.reveal-fallback) .term-pending {
+  display: none;
+}
+
+/* ------------------------------------------------------------------
+   Scroll area
+   Output scrolls inside a fixed-height region, so typing never shifts layout.
+   A short fade at the top softens lines as they scroll away.
+   ------------------------------------------------------------------ */
+.term-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line-strong) transparent;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 1rem, #000 calc(100% - 0.5rem), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 1rem, #000 calc(100% - 0.5rem), transparent 100%);
+}
+
+/* Wheel and trackpad scrolling stays inside the output. On touch screens a swipe
+   that reaches the end chains to the page, so the terminal never traps scrolling. */
+@media (pointer: fine) {
+  .term-scroll {
+    overscroll-behavior: contain;
+  }
+}
+
+.term-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.term-scroll::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background-color: var(--color-line-strong);
+}
+
+.term-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ------------------------------------------------------------------
+   Prompt
+   The focus ring sits on the whole prompt row (same look as the global
+   :focus-visible outline) instead of a box around the bare input.
+   ------------------------------------------------------------------ */
+.term-prompt:has(.term-input:focus-visible) {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.term-input:focus-visible {
+  outline: none;
+}
+
+.term-input {
+  caret-color: var(--color-accent);
+}
+
+/* Block caret where supported, like a real terminal. */
+@supports (caret-shape: block) {
+  .term-input {
+    caret-shape: block;
+  }
+}
+
+/* Hints in the status line fade in once the prompt accepts input. */
+.term-hint {
+  animation: term-hint-in 0.6s var(--ease-out-quart) both;
+}
+
+@keyframes term-hint-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Each new output block settles in quickly; never delays reading. */
+.term-entry {
+  animation: term-entry-in 0.28s var(--ease-out-quart) both;
+}
+
+@keyframes term-entry-in {
+  from { opacity: 0; transform: translate3d(0, 4px, 0); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .term-hint,
+  .term-entry {
+    animation: none;
+  }
+}
