@@ -1,0 +1,95 @@
+/* Cursor-aware ambient light, section indicator, micro-interactions. */
+
+/* ------------------------------------------------------------------
+   Ambient cursor layer (components/motion/ambient-cursor.tsx)
+   Sits between the page backdrop (z -10) and content. Hidden until the
+   pointer moves; fades out when it leaves the window.
+   ------------------------------------------------------------------ */
+.ambient-cursor {
+  position: fixed;
+  inset: 0;
+  z-index: -5;
+  pointer-events: none;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 600ms var(--ease-out-quart);
+}
+
+.ambient-cursor[data-active="true"] {
+  opacity: 1;
+}
+
+.ambient-light {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 760px;
+  height: 760px;
+  border-radius: 9999px;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--color-glow) 7%, transparent), transparent);
+  transform: translate3d(calc(var(--ax, -2000px) - 380px), calc(var(--ay, -2000px) - 380px), 0);
+}
+
+/* The page grid, slightly stronger, visible only in a soft circle around the pointer.
+   The window moves with a transform; inside it a grid tile is shifted by (pointer mod 72px)
+   so its lines stay aligned with the backdrop grid. Both moves are compositor-only, so the
+   grid is rasterized once instead of repainted every frame. */
+.ambient-grid {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 440px;
+  height: 440px;
+  overflow: hidden;
+  mask-image: radial-gradient(closest-side, #000, transparent);
+  transform: translate3d(calc(var(--ax, -2000px) - 220px), calc(var(--ay, -2000px) - 220px), 0);
+}
+
+.ambient-grid-tile {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 512px;
+  height: 512px;
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--color-fg) 9%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--color-fg) 9%, transparent) 1px, transparent 1px);
+  background-size: 72px 72px;
+  background-position: -1px -1px;
+  transform: translate3d(calc(var(--gx, 0px) * -1), calc(var(--gy, 0px) * -1), 0);
+}
+
+@media (prefers-reduced-motion: reduce), (hover: none), (pointer: coarse) {
+  .ambient-cursor {
+    display: none;
+  }
+}
+
+/* ------------------------------------------------------------------
+   Micro-interactions
+   ------------------------------------------------------------------ */
+
+/* Smooth underline for text links: grows from the left on hover/focus. */
+.link-underline {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 0% 1px;
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  transition: background-size 350ms var(--ease-out-expo), color 200ms ease;
+}
+
+.link-underline:hover,
+.link-underline:focus-visible {
+  background-size: 100% 1px;
+}
+
+/* Arrow that turns from → into ↗ on hover of its .group parent. */
+.arrow-turn {
+  transition: transform 300ms var(--ease-out-expo);
+}
+
+.group:hover .arrow-turn,
+.group:focus-visible .arrow-turn {
+  transform: translate3d(2px, -1px, 0) rotate(-45deg);
+}
+

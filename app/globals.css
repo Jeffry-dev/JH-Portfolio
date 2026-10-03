@@ -1,0 +1,698 @@
+@import "tailwindcss";
+
+/* Feature styles (one file per feature, so they can evolve independently). */
+@import "../styles/ambient.css";
+@import "../styles/command-palette.css";
+@import "../styles/tech-dna.css";
+@import "../styles/architecture.css";
+@import "../styles/terminal.css";
+
+/* ==================================================================
+   Design tokens
+   Near-black cool neutrals, warm off-white text, one amber accent.
+   ================================================================== */
+@theme {
+  --color-bg: #08090b;
+  --color-bg-raised: #0c0e11;
+  --color-surface: #111318;
+  --color-surface-2: #171a20;
+  --color-line: rgb(255 255 255 / 0.075);
+  --color-line-strong: rgb(255 255 255 / 0.14);
+  /* ≥3:1 against cards and field fills (WCAG 1.4.11) */
+  --color-field: #6b6e75;
+  --color-fg: #ecebe6;
+  --color-fg-muted: #a4a6ad;
+  /* ≥4.5:1 on cards, even under the amber glows */
+  --color-fg-subtle: #8b8e96;
+  --color-accent: #f2b544;
+  --color-accent-strong: #ffc960;
+  --color-accent-ink: #1a1204;
+  --color-ok: #4ade80;
+  --color-danger: #f87171;
+  /* Soft accent fill for selected/hover states, and the ambient glow color. */
+  --color-accent-muted: #2a2213;
+  --color-glow: #f2b544;
+  /* Overlay tint for hover fills and hairline surfaces: white on dark, ink on light. */
+  --color-tint: #ffffff;
+
+  /* Motion tokens: entrances decelerate, exits accelerate. */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-in-expo: cubic-bezier(0.7, 0, 0.84, 0);
+
+  --animate-caret: caret 1.05s steps(1) infinite;
+
+  @keyframes caret {
+    0%, 50% { opacity: 1; }
+    50.01%, 100% { opacity: 0; }
+  }
+}
+
+@theme inline {
+  --font-sans: var(--font-instrument), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: var(--font-bricolage), var(--font-instrument), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, "SFMono-Regular", "Cascadia Code", Consolas, monospace;
+}
+
+/* `light:` variant, e.g. light:hidden. */
+@custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
+
+/* Surface tokens that aren't utility colours (dark defaults). */
+:root {
+  --shadow-color: rgb(0 0 0 / 0.7);
+  --terminal-shadow: rgb(0 0 0 / 0.9);
+  --card-bg: rgb(12 14 17 / 0.6);
+  --card-sheen-top: rgb(255 255 255 / 0.035);
+  --card-sheen-bottom: rgb(255 255 255 / 0.012);
+  --grid-line: rgb(255 255 255 / 0.035);
+  --grid-dot: rgb(255 255 255 / 0.07);
+}
+
+/* ==================================================================
+   Light theme: its own palette, not an inversion. Every text pair meets WCAG AA
+   (body 16.9:1, muted 7.7:1, subtle 5.1:1, accent 4.6:1, field borders 3:1).
+   The inline boot script sets data-theme from the saved choice or the OS setting;
+   the media query covers visitors without JavaScript.
+   ================================================================== */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --color-bg: #f5f4ef;
+  --color-bg-raised: #efeee8;
+  --color-surface: #ffffff;
+  --color-surface-2: #faf9f6;
+  --color-line: rgb(18 19 23 / 0.11);
+  --color-line-strong: rgb(18 19 23 / 0.24);
+  --color-field: #85888f;
+  --color-fg: #121317;
+  --color-fg-muted: #4a4d55;
+  --color-fg-subtle: #64676f;
+  --color-accent: #b45309;
+  --color-accent-strong: #92400e;
+  --color-accent-ink: #ffffff;
+  --color-ok: #166534;
+  --color-danger: #c81e1e;
+  --color-accent-muted: #f6e6cc;
+  --color-glow: #f2a93b;
+  --color-tint: #121317;
+  --shadow-color: rgb(60 45 20 / 0.16);
+  --terminal-shadow: rgb(40 30 10 / 0.35);
+  --card-bg: rgb(255 255 255 / 0.7);
+  --card-sheen-top: rgb(255 255 255 / 0.85);
+  --card-sheen-bottom: rgb(255 255 255 / 0.35);
+  --grid-line: rgb(18 19 23 / 0.05);
+  --grid-dot: rgb(18 19 23 / 0.1);
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    color-scheme: light;
+    --color-bg: #f5f4ef;
+    --color-bg-raised: #efeee8;
+    --color-surface: #ffffff;
+    --color-surface-2: #faf9f6;
+    --color-line: rgb(18 19 23 / 0.11);
+    --color-line-strong: rgb(18 19 23 / 0.24);
+    --color-field: #85888f;
+    --color-fg: #121317;
+    --color-fg-muted: #4a4d55;
+    --color-fg-subtle: #64676f;
+    --color-accent: #b45309;
+    --color-accent-strong: #92400e;
+    --color-accent-ink: #ffffff;
+    --color-ok: #166534;
+    --color-danger: #c81e1e;
+    --color-accent-muted: #f6e6cc;
+    --color-glow: #f2a93b;
+    --color-tint: #121317;
+    --shadow-color: rgb(60 45 20 / 0.16);
+    --terminal-shadow: rgb(40 30 10 / 0.35);
+    --card-bg: rgb(255 255 255 / 0.7);
+    --card-sheen-top: rgb(255 255 255 / 0.85);
+    --card-sheen-bottom: rgb(255 255 255 / 0.35);
+    --grid-line: rgb(18 19 23 / 0.05);
+    --grid-dot: rgb(18 19 23 / 0.1);
+  }
+}
+
+/* Surfaces that stay dark in both themes (the terminal card). */
+.dark-surface {
+  color-scheme: dark;
+  --color-bg: #08090b;
+  --color-bg-raised: #0c0e11;
+  --color-surface: #111318;
+  --color-line: rgb(255 255 255 / 0.075);
+  --color-line-strong: rgb(255 255 255 / 0.14);
+  --color-fg: #ecebe6;
+  --color-fg-muted: #a4a6ad;
+  --color-fg-subtle: #8b8e96;
+  --color-accent: #f2b544;
+  --color-accent-muted: #2a2213;
+  --color-ok: #4ade80;
+  --color-danger: #f87171;
+  --color-tint: #ffffff;
+}
+
+/* Theme switch: the new theme is revealed by a circle animated from the toggle (see ThemeToggle). */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+/* ==================================================================
+   Base
+   ================================================================== */
+@layer base {
+  html {
+    color-scheme: dark;
+    background-color: var(--color-bg);
+    scroll-behavior: smooth;
+    scroll-padding-top: 5.5rem;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  /* No body background: the fixed <Backdrop /> (z-index -10) must paint above html's background. */
+  body {
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    overflow-x: clip;
+  }
+
+  ::selection {
+    background-color: color-mix(in srgb, var(--color-accent) 30%, transparent);
+    color: var(--color-fg);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 3px;
+    border-radius: 6px;
+  }
+
+  /* Controls that only work with JavaScript are hidden when it is unavailable. */
+  html:not(.js) .js-only {
+    display: none !important;
+  }
+
+  /* Tailwind v4 resets buttons to the default cursor. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ==================================================================
+   Layout + type helpers
+   ================================================================== */
+@utility container-page {
+  width: 100%;
+  max-width: 78rem;
+  margin-inline: auto;
+  padding-inline: 1.25rem;
+  @media (width >= 40rem) {
+    padding-inline: 2rem;
+  }
+  @media (width >= 64rem) {
+    padding-inline: 2.5rem;
+  }
+}
+
+@utility eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-fg-subtle);
+}
+
+@utility section-y {
+  padding-block: 4.5rem;
+  @media (width >= 40rem) {
+    padding-block: 5.5rem;
+  }
+  @media (width >= 64rem) {
+    padding-block: 8.5rem;
+  }
+}
+
+/* Hairline card surface used across sections. */
+@utility card {
+  position: relative;
+  border: 1px solid var(--color-line);
+  background-image: linear-gradient(180deg, var(--card-sheen-top), var(--card-sheen-bottom));
+  background-color: var(--card-bg);
+}
+
+/* ==================================================================
+   Spotlight: a soft highlight that follows the pointer on hover.
+   --mx / --my are written by <PointerSpotlight />.
+   ================================================================== */
+@utility spotlight {
+  isolation: isolate;
+  &::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    z-index: -1;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: 0;
+    background: radial-gradient(
+      28rem circle at var(--mx, 50%) var(--my, 0%),
+      color-mix(in srgb, var(--color-accent) 7%, transparent),
+      transparent 60%
+    );
+    transition: opacity 400ms var(--ease-out-quart);
+  }
+  &::after {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    pointer-events: none;
+    padding: 1px;
+    opacity: 0;
+    background: radial-gradient(
+      22rem circle at var(--mx, 50%) var(--my, 0%),
+      color-mix(in srgb, var(--color-accent) 50%, transparent),
+      transparent 55%
+    );
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+    transition: opacity 400ms var(--ease-out-quart);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    &:hover::before,
+    &:hover::after {
+      opacity: 1;
+    }
+  }
+}
+
+/* ==================================================================
+   Page backdrop: hairline grid, scroll-linked ambient glows, film grain.
+   ================================================================== */
+.backdrop-grid {
+  background-image:
+    linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+  background-size: 72px 72px;
+  background-position: -1px -1px;
+  mask-image: radial-gradient(ellipse 80% 60% at 70% 0%, #000 20%, transparent 75%);
+}
+
+/* Light grain on dark, dark grain on light. */
+:root[data-theme="light"] .backdrop-grain {
+  filter: invert(1);
+  opacity: 0.035;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) .backdrop-grain {
+    filter: invert(1);
+    opacity: 0.035;
+  }
+}
+
+.backdrop-grain {
+  opacity: 0.045;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.9 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ==================================================================
+   Reveal system
+   Hidden states apply only while <html> has `.js` (set before first paint by an
+   inline script). <RevealObserver /> adds `.is-revealed` as elements enter the
+   viewport. If it never runs, `.reveal-fallback` shows everything.
+   ================================================================== */
+[data-reveal] {
+  transition:
+    opacity 0.9s var(--ease-out-expo),
+    transform 0.9s var(--ease-out-expo);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+
+.js [data-reveal]:not(.is-revealed) {
+  opacity: 0;
+  transform: translate3d(0, var(--reveal-y, 28px), 0);
+}
+
+/* Revealed without an entrance (content reached by scrolling up, or skipped by a jump).
+   .reveal-instant lasts two frames; .reveal-settled stays until the element is re-armed. */
+.reveal-instant,
+.reveal-instant * {
+  transition: none !important;
+}
+
+.reveal-settled .dna-wire {
+  animation: none !important;
+}
+
+/* Headings: each word rises out of its own mask. */
+.split-words .w {
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: top;
+  padding-bottom: 0.14em;
+  margin-bottom: -0.14em;
+}
+
+.split-words .w > span {
+  display: inline-block;
+  transition: transform 1.05s var(--ease-out-expo);
+  transition-delay: calc(var(--reveal-delay, 0ms) + 80ms + var(--i, 0) * 45ms);
+}
+
+.js [data-reveal]:not(.is-revealed) .split-words .w > span {
+  transform: translate3d(0, 108%, 0);
+}
+
+.js.reveal-fallback [data-reveal],
+.js.reveal-fallback [data-reveal] .split-words .w > span {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .js [data-reveal]:not(.is-revealed),
+  .js [data-reveal]:not(.is-revealed) .split-words .w > span {
+    transform: none;
+  }
+}
+
+/* ==================================================================
+   Hero
+   ================================================================== */
+
+/* Entrance animation in pure CSS, so it runs before hydration. Stagger with style={{ "--d": "120ms" }}. */
+.rise {
+  animation: rise 0.9s var(--ease-out-expo) both;
+  animation-delay: var(--d, 0ms);
+}
+
+/* Transform-only variant for LCP candidates (never hidden by opacity). */
+.rise-y {
+  animation: rise-y 1s var(--ease-out-expo) both;
+  animation-delay: var(--d, 0ms);
+}
+
+.rise-soft {
+  animation: rise-soft 1.2s var(--ease-out-expo) both;
+  animation-delay: var(--d, 0ms);
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translate3d(0, 22px, 0); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes rise-y {
+  from { transform: translate3d(0, 18px, 0); }
+  to { transform: none; }
+}
+
+@keyframes rise-soft {
+  from { opacity: 0; transform: translate3d(0, 28px, 0) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Kinetic name: characters rise from a per-line mask, then respond to the cursor. */
+.name-line {
+  display: block;
+  overflow: hidden;
+  padding: 0.04em 0.06em 0.14em;
+  margin: -0.04em -0.06em -0.14em;
+}
+
+.name-char {
+  display: inline-block;
+  font-variation-settings: "wght" var(--wght, 600);
+  transition: font-variation-settings 0.5s var(--ease-out-quart);
+  animation: char-rise 1.15s var(--ease-out-expo) both;
+  animation-delay: calc(80ms + var(--ci, 0) * 36ms);
+}
+
+@keyframes char-rise {
+  from { transform: translate3d(0, 108%, 0) rotate(7deg); }
+  to { transform: none; }
+}
+
+/* Magnetic CTA: the inner element follows the cursor; the hit area stays put. */
+.magnetic-inner {
+  transform: translate3d(var(--mag-x, 0px), var(--mag-y, 0px), 0);
+  transition: transform 0.45s var(--ease-out-expo);
+}
+
+/* 3D tilt for the terminal card. */
+.tilt {
+  perspective: 1100px;
+}
+
+.tilt > * {
+  transform: rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
+  transition: transform 0.8s var(--ease-out-expo);
+}
+
+.tilt[data-tilting] > * {
+  transition-duration: 0.2s;
+}
+
+.tilt-glare {
+  opacity: 0;
+  background: radial-gradient(
+    24rem circle at var(--glare-x, 50%) var(--glare-y, 0%),
+    rgb(255 255 255 / 0.06),
+    transparent 60%
+  );
+  transition: opacity 0.5s var(--ease-out-quart);
+}
+
+.tilt[data-tilting] .tilt-glare {
+  opacity: 1;
+}
+
+/* "Live" status dot: a compositor-friendly ping that runs a few times, then rests. */
+.ping {
+  position: relative;
+}
+
+.ping::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: inherit;
+  opacity: 0;
+  animation: ping 2.2s var(--ease-out-quart) 3;
+  animation-delay: 1.2s;
+}
+
+@keyframes ping {
+  0% { transform: scale(1); opacity: 0.6; }
+  80%, 100% { transform: scale(2.6); opacity: 0; }
+}
+
+/* ==================================================================
+   Scroll-driven motion (CSS scroll timelines, which run off the main thread).
+   Browsers without support simply get the static layout.
+   ================================================================== */
+.scroll-progress {
+  display: none;
+}
+
+/* Technology band: continuous loop; each track holds two identical copies and moves by one. */
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee-x var(--marquee-duration, 70s) linear infinite;
+}
+
+.marquee-track[data-direction="right"] {
+  animation-direction: reverse;
+}
+
+.marquee-copy {
+  display: flex;
+  flex-shrink: 0;
+}
+
+/* Only the Pause button stops the band. Off-screen and hidden-tab pauses are invisible and save work. */
+.marquee[data-paused="true"] .marquee-track,
+.marquee[data-offscreen="true"] .marquee-track,
+.marquee[data-hidden="true"] .marquee-track {
+  animation-play-state: paused;
+}
+
+/* Outlined row: the stroke uses the subtle text token, so it stays readable in both themes
+   (about 5:1 against the page). Browsers without text-stroke get solid subtle text. */
+.marquee-outline {
+  color: var(--color-fg-subtle);
+}
+
+@supports (-webkit-text-stroke: 1px black) {
+  .marquee-outline {
+    color: transparent;
+    -webkit-text-stroke: 1.25px var(--color-fg-subtle);
+  }
+}
+
+@keyframes marquee-x {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-50%, 0, 0); }
+}
+
+@supports (animation-timeline: scroll()) {
+  /* Reading progress */
+  .scroll-progress {
+    display: block;
+    transform-origin: 0 50%;
+    animation: progress-x linear both;
+    animation-timeline: scroll(root block);
+  }
+
+  /* Ambient glows drift slowly as the page scrolls (replaces an infinite loop). */
+  .glow-a {
+    animation: glow-a linear both;
+    animation-timeline: scroll(root block);
+  }
+  .glow-b {
+    animation: glow-b linear both;
+    animation-timeline: scroll(root block);
+  }
+
+  /* Hero depth: copy, visual and facts move at different speeds as you scroll away. */
+  @media (width >= 48rem) {
+    .hero-depth-copy,
+    .hero-depth-visual,
+    .hero-depth-facts {
+      animation-timing-function: linear;
+      animation-fill-mode: both;
+      animation-timeline: scroll(root block);
+      animation-range: 0 100vh;
+    }
+    .hero-depth-copy { animation-name: depth-copy; }
+    .hero-depth-visual { animation-name: depth-visual; }
+    .hero-depth-facts { animation-name: depth-facts; }
+  }
+
+  /* Experience timeline: the rail draws itself as you read down the list. */
+  .rail-fill {
+    transform-origin: 50% 0;
+    animation: rail-draw linear both;
+    animation-timeline: view();
+    animation-range: cover 40vh cover calc(100% - 60vh);
+  }
+}
+
+@keyframes progress-x {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+@keyframes glow-a {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to { transform: translate3d(-18vw, 70vh, 0) scale(1.25); }
+}
+
+@keyframes glow-b {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(14vw, -30vh, 0); }
+}
+
+/* Transform only: readable text never fades below AA contrast while it is still on screen. */
+@keyframes depth-copy {
+  to { transform: translate3d(0, -70px, 0); }
+}
+
+@keyframes depth-visual {
+  to { transform: translate3d(0, -150px, 0); }
+}
+
+@keyframes depth-facts {
+  to { transform: translate3d(0, -40px, 0); }
+}
+
+@keyframes rail-draw {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+
+/* ==================================================================
+   Reduced motion: final, readable states. No parallax, no scroll scrub.
+   ================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  .rise,
+  .rise-y,
+  .rise-soft,
+  .name-char,
+  .ping::after,
+  .glow-a,
+  .glow-b,
+  .hero-depth-copy,
+  .hero-depth-visual,
+  .hero-depth-facts,
+  .marquee-track,
+  .rail-fill {
+    animation: none !important;
+  }
+  .scroll-progress {
+    animation-duration: auto !important;
+  }
+  .marquee-track,
+  .marquee-copy {
+    width: auto;
+    flex-wrap: wrap;
+    justify-content: center;
+    row-gap: 0.5rem;
+  }
+  .marquee-copy-clone,
+  .marquee-toggle {
+    display: none;
+  }
+  .magnetic-inner,
+  .tilt > * {
+    transform: none;
+  }
+}
+
+/* Printing / saving as PDF: show everything. */
+@media print {
+  [data-reveal],
+  [data-reveal] .split-words .w > span {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .scroll-progress {
+    display: none !important;
+  }
+}
