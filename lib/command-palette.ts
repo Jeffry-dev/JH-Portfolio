@@ -13,8 +13,7 @@ export function openCommandPalette() {
 }
 
 /* ------------------------------------------------------------------
-   Platform: Apple devices use Cmd+K, everything else Ctrl+K. Only one of the two is
-   claimed, so Ctrl+K keeps its system meaning on macOS (delete to the end of the line).
+   Platform: Apple devices advertise Cmd+K, everything else Ctrl+K.
    ------------------------------------------------------------------ */
 
 let applePlatform: boolean | undefined;
@@ -40,7 +39,28 @@ export function useIsApplePlatform(): boolean {
   return useSyncExternalStore(subscribe, isApplePlatform, () => false);
 }
 
-/** The palette shortcut as an aria-keyshortcuts value. */
+/** The palette shortcut as an aria-keyshortcuts value (the advertised one; see isPaletteShortcut). */
 export function paletteKeyShortcuts(apple: boolean): string {
   return apple ? "Meta+K" : "Control+K";
+}
+
+function isEditable(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && (target.isContentEditable || target.matches("input, textarea, select"));
+}
+
+/**
+ * Cmd+K on Apple devices, Ctrl+K elsewhere, including keyboard layouts where the K key types
+ * another letter. Apple devices also accept Ctrl+K outside text fields, for visitors with a PC
+ * habit; inside a field Ctrl+K keeps its system meaning there (delete to the end of the line).
+ */
+export function isPaletteShortcut(event: KeyboardEvent): boolean {
+  const cmd = event.metaKey && !event.ctrlKey;
+  const ctrl = event.ctrlKey && !event.metaKey;
+  const modifier = isApplePlatform() ? cmd || (ctrl && !isEditable(event.target)) : ctrl;
+  if (!modifier || event.altKey || event.shiftKey || event.isComposing) return false;
+  if (typeof event.key !== "string") return false;
+  const key = event.key.toLowerCase();
+  if (key === "k") return true;
+  // Non-Latin layouts (e.g. Arabic) report a different character for the same physical key.
+  return !/^[a-z]$/.test(key) && event.code === "KeyK";
 }

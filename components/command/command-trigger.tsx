@@ -28,11 +28,15 @@ export function CommandTrigger({ variant = "desktop", className }: CommandTrigge
         aria-haspopup="dialog"
         aria-keyshortcuts={keyShortcuts}
         className={cn(
-          "grid size-11 shrink-0 place-items-center rounded-full border border-line-strong bg-tint/[0.03] text-fg transition-[background-color,border-color,transform] duration-200 hover:border-tint/25 hover:bg-tint/[0.07] active:scale-95",
+          "group grid size-11 shrink-0 place-items-center rounded-full border border-line-strong bg-tint/[0.03] text-fg transition-[background-color,border-color,scale] duration-150 ease-out-quart hover:border-tint/25 hover:bg-tint/[0.07] focus-visible:border-tint/25 focus-visible:bg-tint/[0.07] active:scale-[0.98]",
           className,
         )}
       >
-        <Search aria-hidden="true" className="size-[1.125rem]" />
+        {/* The icon tilts on hover, on keyboard focus and while pressed, so a tap gets the same feedback. */}
+        <Search
+          aria-hidden="true"
+          className="size-[1.125rem] transition-transform duration-300 ease-out-expo group-hover:-rotate-12 group-focus-visible:-rotate-12 group-active:-rotate-12"
+        />
       </button>
     );
   }
@@ -44,19 +48,20 @@ export function CommandTrigger({ variant = "desktop", className }: CommandTrigge
       aria-haspopup="dialog"
       aria-keyshortcuts={keyShortcuts}
       className={cn(
-        "group inline-flex h-10 shrink-0 items-center gap-2 rounded-full border border-line-strong bg-tint/[0.03] pr-1.5 pl-3.5 text-sm text-fg-muted transition-[background-color,border-color,color,transform] duration-200 hover:border-tint/25 hover:bg-tint/[0.06] hover:text-fg active:scale-[0.97]",
+        // 44px tall on touch screens (tablets in landscape get the desktop header), 40px with a mouse.
+        "group inline-flex h-10 shrink-0 items-center gap-2 rounded-full border border-line-strong bg-tint/[0.03] pr-1.5 pl-3.5 text-sm text-fg-muted transition-[background-color,border-color,color,scale] duration-150 ease-out-quart hover:border-tint/25 hover:bg-tint/[0.06] hover:text-fg focus-visible:border-tint/25 focus-visible:bg-tint/[0.06] focus-visible:text-fg active:scale-[0.98] pointer-coarse:h-11",
         className,
       )}
     >
       <Search
         aria-hidden="true"
-        className="size-4 transition-transform duration-300 ease-out-expo group-hover:-rotate-12"
+        className="size-4 transition-transform duration-300 ease-out-expo group-hover:-rotate-12 group-focus-visible:-rotate-12 group-active:-rotate-12"
       />
       <span className="whitespace-nowrap">Search</span>
       {/* The shortcut is exposed through aria-keyshortcuts; the chip is visual only. */}
       <kbd
         aria-hidden="true"
-        className="ml-1 inline-flex h-7 shrink-0 items-center rounded-full border border-line bg-tint/[0.04] px-2.5 font-mono whitespace-nowrap text-[0.6875rem] tracking-wide text-fg-muted transition-colors duration-200 group-hover:border-line-strong group-hover:text-fg"
+        className="ml-1 inline-flex h-7 shrink-0 items-center rounded-full border border-line bg-tint/[0.04] px-2.5 font-mono whitespace-nowrap text-[0.6875rem] tracking-wide text-fg-muted transition-colors duration-150 group-hover:border-line-strong group-hover:text-fg group-focus-visible:border-line-strong group-focus-visible:text-fg"
       >
         {apple ? "⌘K" : "Ctrl K"}
       </kbd>

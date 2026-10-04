@@ -1,6 +1,7 @@
-/* Command palette (components/command/command-palette.tsx). Owned by the command palette work.
-   Mechanics live here (top layer sizing, open/close transitions, scroll lock); surface colors are
-   Tailwind token classes on the elements, so both themes work without theme-specific rules. */
+/* Command palette (components/command/command-palette-dialog.tsx). Owned by the command palette work.
+   Mechanics live here (top layer sizing, open/close transitions, scroll lock, row entrances);
+   surface colors are Tailwind token classes on the elements, so both themes work without
+   theme-specific rules. */
 
 /* ------------------------------------------------------------------
    Scroll lock while open. The scrollbar gutter stays reserved, so the page does not shift.
@@ -13,16 +14,22 @@ html:has(.command-palette[open]) {
 
 /* ------------------------------------------------------------------
    Dialog shell (native <dialog> in the top layer)
+   --palette-vh is the visible height, written by the component while the palette is open. The
+   on-screen keyboard shrinks only the visual viewport (dvh ignores it), so sizing to it keeps
+   the last options above the keyboard on phones.
    ------------------------------------------------------------------ */
 .command-palette {
+  --palette-top: max(1rem, env(safe-area-inset-top));
+  --palette-room: calc(var(--palette-vh, 100dvh) - var(--palette-top) - 1rem);
+
   position: fixed;
   inset: 0;
   width: min(40rem, 100% - 2rem);
   max-width: none;
   height: fit-content;
   max-height: 70vh;
-  max-height: 70dvh;
-  margin: max(1rem, env(safe-area-inset-top)) auto auto;
+  max-height: min(70dvh, var(--palette-room));
+  margin: var(--palette-top) auto auto;
   padding: 0;
   overflow: hidden;
   box-shadow:
@@ -33,7 +40,7 @@ html:has(.command-palette[open]) {
   /* Closed state. Exits are a little quicker than entrances. */
   opacity: 0;
   transition-property: opacity, transform, display, overlay;
-  transition-duration: 140ms;
+  transition-duration: 200ms;
   transition-timing-function: var(--ease-out-quart);
   transition-behavior: allow-discrete;
 }
@@ -42,7 +49,7 @@ html:has(.command-palette[open]) {
   display: flex;
   flex-direction: column;
   opacity: 1;
-  transition-duration: 180ms;
+  transition-duration: 250ms;
 }
 
 @starting-style {
@@ -51,14 +58,38 @@ html:has(.command-palette[open]) {
   }
 }
 
-@media (width >= 40rem) {
+/* Short screens (phones in landscape): every pixel of height counts. */
+@media (height < 30rem) {
   .command-palette {
-    margin-top: 12vh;
-    max-height: min(34rem, 100% - 12vh - 2rem);
+    max-height: var(--palette-room);
   }
 }
 
-/* Scale only when motion is welcome. Origin at the top keeps the search field steady. */
+@media (width >= 40rem) and (height >= 30rem) {
+  .command-palette {
+    --palette-top: 12vh;
+    max-height: min(34rem, var(--palette-room) - 1rem);
+  }
+}
+
+/* Phones (portrait): a sheet anchored to the bottom of the visible viewport, so it sits right
+   above the keyboard while it is open, full width and square along the bottom edge. Without
+   --palette-vh (before the component has measured) it rests on the layout viewport's bottom. */
+@media (width < 40rem) {
+  .command-palette {
+    --palette-room: calc(var(--palette-vh, 100dvh) - var(--palette-top));
+    width: 100%;
+    bottom: calc(100% - var(--palette-vh, 100%));
+    margin: auto 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+    border-bottom-width: 0;
+    border-radius: 1.25rem 1.25rem 0 0;
+  }
+}
+
+/* Movement only when motion is welcome. Desktop and tablets: a slight scale from the top edge,
+   so the search field stays steady. Phones: the sheet slides up from the bottom edge and back
+   down on close. */
 @media (prefers-reduced-motion: no-preference) {
   .command-palette {
     transform: scale(0.98);
@@ -70,6 +101,24 @@ html:has(.command-palette[open]) {
   @starting-style {
     .command-palette[open] {
       transform: scale(0.98);
+    }
+  }
+
+  @media (width < 40rem) {
+    .command-palette {
+      transform: translate3d(0, 100%, 0);
+      transform-origin: 50% 100%;
+      transition-duration: 220ms;
+    }
+    .command-palette[open] {
+      transform: none;
+      transition-duration: 340ms;
+      transition-timing-function: var(--ease-out-expo);
+    }
+    @starting-style {
+      .command-palette[open] {
+        transform: translate3d(0, 100%, 0);
+      }
     }
   }
 }
@@ -99,14 +148,14 @@ html:has(.command-palette[open]) {
   backdrop-filter: blur(4px);
   opacity: 0;
   transition-property: opacity, display, overlay;
-  transition-duration: 140ms;
+  transition-duration: 200ms;
   transition-timing-function: var(--ease-out-quart, ease-out);
   transition-behavior: allow-discrete;
 }
 
 .command-palette[open]::backdrop {
   opacity: 1;
-  transition-duration: 200ms;
+  transition-duration: 250ms;
 }
 
 @starting-style {
@@ -166,6 +215,81 @@ html:has(.command-palette[open]) {
   padding-top: 0.375rem;
 }
 
+/* Current row: an accent bar on the left edge that grows from its centre as the selection
+   lands on the row, and shrinks back when it leaves. */
+.command-option::before {
+  content: "";
+  position: absolute;
+  top: 0.625rem;
+  bottom: 0.625rem;
+  left: 0;
+  width: 2px;
+  border-radius: 9999px;
+  background-color: var(--color-accent);
+  opacity: 0;
+  transform: scaleY(0);
+  transition:
+    opacity 150ms var(--ease-out-quart),
+    transform 150ms var(--ease-out-quart);
+}
+
+.command-option[aria-selected="true"]::before {
+  opacity: 1;
+  transform: none;
+}
+
+/* ------------------------------------------------------------------
+   Entrances. Rows and their group headings rise in one after another when the list mounts:
+   20 ms a row, capped at 300 ms (--row-delay, set by the component, which also remounts the
+   list whenever its results change, so a new query plays the stagger again). The search icon
+   swings in with the dialog; the key hints follow once the rows have settled; the Enter hint
+   swaps with a short rise when the current row's verb changes. With reduced motion everything
+   is in place at once.
+   ------------------------------------------------------------------ */
+@media (prefers-reduced-motion: no-preference) {
+  .command-heading,
+  .command-option {
+    animation: command-row-in 240ms var(--ease-out-quart) both;
+    animation-delay: var(--row-delay, 0ms);
+  }
+
+  .command-empty {
+    animation: command-row-in 260ms var(--ease-out-quart) both;
+  }
+
+  .command-icon-in {
+    animation: command-icon-in 500ms var(--ease-out-expo) both;
+  }
+
+  .command-hints {
+    animation: command-fade-in 300ms var(--ease-out-quart) 150ms both;
+  }
+
+  .command-hint-swap {
+    animation: command-row-in 160ms var(--ease-out-quart) both;
+  }
+}
+
+@keyframes command-row-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0);
+  }
+}
+
+@keyframes command-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes command-icon-in {
+  from {
+    opacity: 0;
+    transform: rotate(-20deg) scale(0.85);
+  }
+}
+
 /* Confirmation tick after copying: a short pop, so the change is noticed. */
 .command-pop {
   animation: command-pop 420ms var(--ease-out-expo) both;
@@ -190,10 +314,4 @@ html:has(.command-palette[open]) {
   }
 }
 
-/* ------------------------------------------------------------------
-   Jump targets. A section or project case focused by the palette (so keyboard users continue
-   reading from there) is not itself a control, so it gets no focus ring, like #main.
-   ------------------------------------------------------------------ */
-[data-command-target]:focus {
-  outline: none;
-}
+/* Jump targets focused after a palette jump get no focus ring: see lib/focus-target.ts and styles/navbar.css. */
