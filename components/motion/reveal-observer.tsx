@@ -7,8 +7,11 @@ const REVEALED = "is-revealed";
 const INSTANT = "reveal-instant";
 /** Stays until the element is re-armed: reveal-only animations (e.g. DNA wires) don't replay. */
 const SETTLED = "reveal-settled";
-/** Scrolled to within this share of a viewport from the top of the page counts as back at the top. */
-const TOP_ZONE = 0.25;
+/**
+ * How far below the bottom edge (in viewport heights) a revealed element must be before it is
+ * re-armed. The margin keeps a small scroll back and forth from replaying what was just shown.
+ */
+const REARM_DISTANCE = 0.25;
 
 /**
  * Drives every `[data-reveal]` element on the page; CSS handles the motion.
@@ -18,9 +21,10 @@ const TOP_ZONE = 0.25;
  *   jump (command palette, link, fast scroll, restored scroll position), appears instantly,
  *   so re-reading is never slowed down. Keyboard focus moving into a hidden element shows it
  *   instantly too, so a focused control is never transparent.
- * - Back at the top of the page, everything below the viewport is re-armed, so the next pass
- *   down plays the entrances again, like a fresh load. Scrolling back up mid-page never
- *   re-arms anything. With prefers-reduced-motion, elements stay revealed once shown.
+ * - Scroll back up past a section until it is well below the screen, and it is re-armed: the
+ *   next time you scroll down to it, its entrance plays again, like a fresh load. Anywhere on
+ *   the page, not only from the top. With prefers-reduced-motion, elements stay revealed once
+ *   shown.
  *
  * A nested reveal can ask to enter together with its parent: `data-reveal-with="<media query>"`
  * reveals it at the same moment as its nearest `[data-reveal]` ancestor whenever the query
@@ -101,10 +105,10 @@ export function RevealObserver() {
     elements.forEach((el) => observer.observe(el));
 
     // Jumps can carry an element from below the screen to above it without it ever
-    // intersecting, which IntersectionObserver never reports. Arriving back at the top of the
-    // page re-arms what lies below the viewport (never what is on screen). One cheap pass per
-    // scrolled frame covers both; it only measures pending elements, except on that arrival.
-    let atTop = window.scrollY <= window.innerHeight * TOP_ZONE;
+    // intersecting, which IntersectionObserver never reports. Scrolling up re-arms what has
+    // gone well below the viewport (never what is on screen). One cheap pass per scrolled
+    // frame covers both; revealed elements are only measured while scrolling up.
+    let lastY = window.scrollY;
     const sweep = () => {
       const height = window.innerHeight;
       const atEnd = window.scrollY + height >= root.scrollHeight - 2;
@@ -114,13 +118,13 @@ export function RevealObserver() {
         else if (atEnd && rect.top < height) reveal(el, false); // end of page: the -10% band can't be crossed
       }
 
-      const nowAtTop = window.scrollY <= height * TOP_ZONE;
-      if (nowAtTop && !atTop && !reducedMotion.matches) {
+      const y = window.scrollY;
+      if (y < lastY && !reducedMotion.matches) {
         for (const el of elements) {
-          if (!pending.has(el) && el.getBoundingClientRect().top >= height) rearm(el);
+          if (!pending.has(el) && el.getBoundingClientRect().top >= height * (1 + REARM_DISTANCE)) rearm(el);
         }
       }
-      atTop = nowAtTop;
+      lastY = y;
     };
 
     let scheduled = false;
