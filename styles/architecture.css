@@ -2,81 +2,237 @@
    Project case studies + architecture diagrams (components/projects/*).
    Owned by the projects work.
 
-   Entrance: when a project card gets `.is-revealed`, its diagram assembles in order
-   (node, connector, node, connector, node, then modules). Hidden states exist only under
-   `.js [data-reveal]:not(.is-revealed)` and only when motion is allowed, so no-JS, print,
-   the reveal fallback and reduced motion always show the complete diagram.
+   Card: a quiet hover and keyboard-focus state (border, spotlight border, a small index
+   nudge); a tap (`data-tap`, set by <PointerSpotlight /> for 650 ms) mirrors it on touch.
+   Stack chips are links to the Technical DNA with their own hover, focus and press states;
+   the card no longer lights them up as a group.
 
-   Active card (hover, or keyboard focus inside it; fine pointers only): the index and title
-   shift, chips brighten, and a soft accent pulse runs down the connectors while the nodes
-   light up in turn. The sequence plays `--arch-runs` times (2), then rests on the static
-   accents, so a pointer parked on the card never keeps the page painting. Every animated
-   property is opacity or transform: the lit state of nodes, icons and module chips is an
-   `::after` overlay that only fades in and out.
+   Entrance: when a project card gets `.is-revealed`, its header settles in (index from the
+   left, eyebrow rule drawing, title rising), the rows stagger in (`.stagger` and
+   data-reveal-item, app/globals.css), the feature dashes draw and the stack chips follow 40 ms
+   apart, while the diagram assembles in order (node, connector, node, connector, node, then
+   modules). Once the card has landed, one soft light band (`.case-sheen`) sweeps across it.
+   Hidden states exist only under `.js [data-reveal]:not(.is-revealed)` and only when motion
+   is allowed, so no-JS, print, the reveal fallback and reduced motion always show the
+   complete card and diagram. Everything replays with the reveal (instant reveals, marked
+   `.reveal-settled`, skip the sheen).
+
+   Inspecting (components/projects/architecture-explorer.tsx): the part being inspected is
+   `data-state="active"`, its neighbours "linked", the rest "dim". Connectors touching the
+   active node get `data-lit` and carry one data-flow pulse (once per activation, none with
+   reduced motion). A stack chip preview marks the nodes that use its technology with
+   `data-match`. A touch press on a part (`data-pressed`) flashes it in accent. Lit states are
+   `::after` overlays that only fade, and dimming uses color tokens (not opacity) on text, so
+   everything keeps its contrast and nothing reflows.
    ================================================================== */
 
 /* ------------------------------------------------------------------
    Case study card
    ------------------------------------------------------------------ */
 .case-study {
+  /* The sheen band: white light on the dark card; a warm glow on paper (ink would read as a
+     shadow). The angle leans less on phones, where cards are tall and narrow. */
+  --case-sheen: rgb(255 255 255 / 0.06);
+  --case-sheen-angle: 110deg;
   transition:
-    background-color 400ms var(--ease-out-quart),
-    border-color 300ms var(--ease-out-quart);
+    background-color 200ms var(--ease-out-quart),
+    border-color 200ms var(--ease-out-quart);
 }
 
-.case-index,
-.case-title {
-  transition: translate 500ms var(--ease-out-expo);
+:root[data-theme="light"] .case-study {
+  --case-sheen: color-mix(in srgb, var(--color-glow) 10%, transparent);
 }
 
-.case-title {
-  transition-delay: 40ms;
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) .case-study {
+    --case-sheen: color-mix(in srgb, var(--color-glow) 10%, transparent);
+  }
 }
 
-.case-chip {
+@media (width < 48rem) {
+  .case-study {
+    --case-sheen-angle: 100deg;
+  }
+}
+
+/* Index: `translate` is the hover nudge, `transform` the entrance, so the two never fight. */
+.case-index {
+  --case-t: calc(var(--reveal-delay, 0ms) + 60ms);
   transition:
-    border-color 300ms var(--ease-out-quart),
-    background-color 300ms var(--ease-out-quart),
-    color 300ms var(--ease-out-quart);
-  transition-delay: calc(var(--k, 0) * 25ms);
-}
-
-.case-ask-icon {
-  transition:
-    translate 450ms var(--ease-out-expo),
-    border-color 200ms var(--ease-out-quart),
-    color 200ms var(--ease-out-quart);
+    translate 300ms var(--ease-out-quart),
+    opacity 400ms var(--ease-out-quart) var(--case-t),
+    transform 600ms var(--ease-out-expo) var(--case-t);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .case-study:is(:hover, :has(:focus-visible)) {
+  .case-study:hover {
     border-color: var(--color-line-strong);
     background-color: color-mix(in srgb, var(--color-tint) 2%, var(--card-bg));
   }
 
-  /* Keyboard focus lights the spotlight border as well (the utility handles hover). */
-  .case-study.spotlight:has(:focus-visible)::before,
-  .case-study.spotlight:has(:focus-visible)::after {
-    opacity: 1;
-  }
-
-  .case-study:is(:hover, :has(:focus-visible)) .case-index {
+  .case-study:hover .case-index {
     translate: 3px 0;
   }
+}
 
-  .case-study:is(:hover, :has(:focus-visible)) .case-title {
-    translate: 2px 0;
+/* Keyboard focus anywhere inside the card mirrors hover, spotlight border included (the
+   spotlight utility only handles hover). A tap does the same for the 650 ms of `data-tap`. */
+.case-study:has(:focus-visible),
+.case-study[data-tap] {
+  border-color: var(--color-line-strong);
+  background-color: color-mix(in srgb, var(--color-tint) 2%, var(--card-bg));
+}
+
+.case-study.spotlight:has(:focus-visible)::after {
+  opacity: 1;
+}
+
+.case-study:has(:focus-visible) .case-index,
+.case-study[data-tap] .case-index {
+  translate: 3px 0;
+}
+
+/* ---- Entrance choreography (header, rows, chips), on top of the card's own 16px rise.
+   Rows come from the `.stagger` utility (delay 120ms + --i * 60ms); the dashes and chips
+   inside a row start a beat after it, using the row's inherited --i. ---- */
+.case-rule {
+  transform-origin: 0 50%;
+  transition: transform 500ms var(--ease-out-expo) calc(var(--reveal-delay, 0ms) + 140ms);
+}
+
+.case-title {
+  --case-t: calc(var(--reveal-delay, 0ms) + 100ms);
+  transition:
+    opacity 450ms var(--ease-out-quart) var(--case-t),
+    transform 700ms var(--ease-out-expo) var(--case-t);
+}
+
+/* Key features: each dash draws from the left, 50 ms apart (`--j`). */
+.case-dash {
+  --case-t: calc(var(--reveal-delay, 0ms) + 280ms + var(--i, 0) * 60ms + min(var(--j, 0), 5) * 50ms);
+  transform-origin: 0 50%;
+  transition: transform 450ms var(--ease-out-expo) var(--case-t);
+}
+
+/* Stack: chips slide in 40 ms apart (`--k`), after their row. */
+.case-stack-item {
+  --case-t: calc(var(--reveal-delay, 0ms) + 200ms + var(--i, 0) * 60ms + min(var(--k, 0), 5) * 40ms);
+  transition:
+    opacity 400ms var(--ease-out-quart) var(--case-t),
+    transform 550ms var(--ease-out-expo) var(--case-t);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .js [data-reveal]:not(.is-revealed) .case-index {
+    opacity: 0;
+    transform: translate3d(-10px, 0, 0);
   }
 
-  .case-study:is(:hover, :has(:focus-visible)) .case-chip {
-    border-color: var(--color-line-strong);
-    background-color: color-mix(in srgb, var(--color-tint) 6%, transparent);
+  .js [data-reveal]:not(.is-revealed) .case-rule {
+    transform: scaleX(0);
+  }
+
+  .js [data-reveal]:not(.is-revealed) .case-title {
+    opacity: 0;
+    transform: translate3d(0, 12px, 0);
+  }
+
+  .js [data-reveal]:not(.is-revealed) .case-dash {
+    transform: scaleX(0);
+  }
+
+  .js [data-reveal]:not(.is-revealed) .case-stack-item {
+    opacity: 0;
+    transform: translate3d(-6px, 0, 0);
+  }
+}
+
+/* The reveal script never ran: show everything (same specificity, declared later). */
+.js.reveal-fallback [data-reveal] :is(.case-index, .case-rule, .case-title, .case-dash, .case-stack-item) {
+  opacity: 1;
+  transform: none;
+}
+
+/* ---- Sheen: a soft diagonal light band crosses the card once, 200 ms after it reveals.
+   The span clips the band to the card's corners (the card itself can't clip: its figure is
+   sticky); only the band's transform moves. It sits above the content at 6% so it reads as
+   light on glass, never as a change in the text. ---- */
+.case-sheen {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.case-sheen::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(var(--case-sheen-angle), transparent 35%, var(--case-sheen) 50%, transparent 65%);
+  transform: translate3d(-120%, 0, 0);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .js [data-reveal].is-revealed:not(.reveal-settled) .case-sheen::before {
+    animation: case-sheen 1.1s var(--ease-out-quart) both;
+    animation-delay: calc(var(--reveal-delay, 0ms) + 200ms);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .case-sheen {
+    display: none;
+  }
+}
+
+@keyframes case-sheen {
+  from {
+    transform: translate3d(-120%, 0, 0);
+  }
+  to {
+    transform: translate3d(120%, 0, 0);
+  }
+}
+
+/* Stack chips: links to the skill in the Technical DNA. */
+.case-chip {
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    border-color 200ms var(--ease-out-quart),
+    background-color 200ms var(--ease-out-quart),
+    color 200ms var(--ease-out-quart),
+    scale 150ms var(--ease-out-quart);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .case-chip:hover {
+    border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-line-strong));
+    background-color: color-mix(in srgb, var(--color-tint) 5%, transparent);
     color: var(--color-fg);
   }
+}
 
-  .case-study:is(:hover, :has(:focus-visible)) .case-ask-icon {
-    translate: 3px 0;
-  }
+.case-chip:focus-visible {
+  border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-line-strong));
+  background-color: color-mix(in srgb, var(--color-tint) 5%, transparent);
+  color: var(--color-fg);
+}
+
+/* Press (mouse and touch): the hover colours plus a small scale, so a tap is seen even
+   where there is no hover. */
+.case-chip:active {
+  scale: 0.98;
+  border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-line-strong));
+  color: var(--color-fg);
+}
+
+/* The technology a Technical DNA link brought the visitor here for. */
+.case-chip[data-match] {
+  border-color: var(--color-accent);
+  background-color: var(--color-accent-muted);
+  color: var(--color-fg);
 }
 
 /* ------------------------------------------------------------------
@@ -86,13 +242,47 @@
   /* Entrance: first node, then one step per connector / node. */
   --arch-base: calc(var(--reveal-delay, 0ms) + 180ms);
   --arch-step: 150ms;
-  /* Active sequence: one cycle, the time between two nodes lighting up, and how many
-     cycles play before the diagram rests. */
-  --arch-cycle: 2600ms;
-  --arch-gap: 450ms;
-  --arch-runs: 2;
   --arch-wire: color-mix(in srgb, var(--color-field) 80%, transparent);
   --arch-node-shadow: 0 10px 28px -16px var(--shadow-color);
+  /* Resting accents, so the direction of the flow reads at a glance. */
+  --arch-head-rest: color-mix(in srgb, var(--color-accent) 60%, var(--color-field));
+  --arch-wire-rest: 0.4;
+}
+
+/* Header button: "Architecture" replays the data flow (two cycles). Its icon turns once per
+   press and holds the accent while the flow runs, so the control and the drawing read as one. */
+.arch-replay {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.arch-replay-icon {
+  transition: color 300ms var(--ease-out-quart);
+}
+
+.arch-replay[data-flowing] .arch-replay-icon {
+  color: var(--color-accent);
+}
+
+.arch-replay-icon[data-spin] {
+  animation: arch-spin 600ms var(--ease-out-quart);
+}
+
+@keyframes arch-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
+/* Without JavaScript the header is a plain label again. */
+html:not(.js) .arch-replay {
+  pointer-events: none;
+}
+
+html:not(.js) .arch-replay-icon {
+  display: none;
 }
 
 .arch-canvas {
@@ -108,11 +298,11 @@
   pointer-events: none;
   background-image: radial-gradient(var(--grid-dot) 1px, transparent 1px);
   background-position: center;
-  background-size: 16px 16px;
+  background-size: 18px 18px;
   mask-image: radial-gradient(ellipse at center, #000 30%, transparent 78%);
 }
 
-/* Ambient glow behind the flow; brightens while the card is active. */
+/* Ambient glow behind the flow; brightens while the card is active or a part is inspected. */
 .arch-canvas::after {
   content: "";
   position: absolute;
@@ -121,7 +311,18 @@
   pointer-events: none;
   background: radial-gradient(closest-side, color-mix(in srgb, var(--color-glow) 10%, transparent), transparent);
   opacity: 0.6;
-  transition: opacity 500ms var(--ease-out-quart);
+  transition: opacity 300ms var(--ease-out-quart);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .case-study:hover .arch-canvas::after {
+    opacity: 1;
+  }
+}
+
+.case-study:has(:focus-visible) .arch-canvas::after,
+.arch-canvas[data-inspecting]::after {
+  opacity: 1;
 }
 
 /* The spine: nodes and connectors share one column (`--arch-spine`). `--arch-mods-w` is the
@@ -141,17 +342,26 @@
   position: relative;
 }
 
+/* Nodes and module chips are toggle buttons; their states come from the explorer. */
 .arch-node {
   position: relative;
   isolation: isolate;
   width: var(--arch-spine);
   box-shadow: var(--arch-node-shadow);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.arch-node:focus-visible {
+  outline-offset: 2px;
+}
+
+.arch-detail {
+  transition: color 200ms var(--ease-out-quart);
 }
 
 /*
- * Lit states for the active sequence. Each overlay sits above its element's own background
- * and below its content (z-index -1 inside the isolated element) and only its opacity
- * animates, so the repeat stays on the compositor.
+ * Lit states. Each overlay sits above its element's own background and below its content
+ * (z-index -1 inside the isolated element), and only its opacity changes.
  */
 .arch-node::after,
 .arch-icon::after,
@@ -164,6 +374,7 @@
   border-radius: inherit;
   opacity: 0;
   pointer-events: none;
+  transition: opacity 200ms var(--ease-out-quart);
 }
 
 .arch-node::after {
@@ -179,6 +390,7 @@
 .arch-icon {
   position: relative;
   isolation: isolate;
+  transition: opacity 200ms var(--ease-out-quart);
 }
 
 .arch-icon::after {
@@ -190,6 +402,7 @@
 .arch-chip {
   position: relative;
   isolation: isolate;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .arch-chip::after {
@@ -198,7 +411,12 @@
   background-color: color-mix(in srgb, var(--color-accent) 6%, var(--color-surface));
 }
 
-/* Connector: hairline, travelling pulse, arrowhead pointing down at the next node. */
+/* Without JavaScript the parts are plain labels. */
+html:not(.js) :is(.arch-node, .arch-chip) {
+  cursor: default;
+}
+
+/* Connector: hairline, data-flow pulse, arrowhead pointing down at the next node. */
 .arch-link {
   position: relative;
   display: block;
@@ -216,7 +434,7 @@
   transform-origin: 50% 0;
 }
 
-/* Accent tint for the active card. */
+/* Accent tint: faint at rest, full on a lit connector. */
 .arch-line::after {
   content: "";
   position: absolute;
@@ -226,15 +444,15 @@
     color-mix(in srgb, var(--color-accent) 20%, transparent),
     color-mix(in srgb, var(--color-accent) 65%, transparent)
   );
-  opacity: 0;
-  transition: opacity 400ms var(--ease-out-quart);
+  opacity: var(--arch-wire-rest);
+  transition: opacity 200ms var(--ease-out-quart);
 }
 
 .arch-pulse {
   position: absolute;
   top: 0;
-  left: calc(50% - 2px);
-  width: 5px;
+  left: calc(50% - 3.5px);
+  width: 8px;
   height: calc(50% - 3px);
   opacity: 0;
   pointer-events: none;
@@ -253,7 +471,7 @@
   display: block;
   width: 9px;
   height: 6px;
-  color: var(--color-field);
+  color: var(--arch-head-rest);
   transform-origin: 50% 100%;
 }
 
@@ -265,14 +483,14 @@
   left: var(--arch-spine);
   width: 1.75rem;
   height: 1px;
-  background: var(--arch-wire);
+  background-color: var(--arch-wire);
   transform-origin: 0 50%;
 }
 
 .arch-branch-pulse {
   position: absolute;
-  top: -2px;
-  bottom: -2px;
+  top: -3.5px;
+  bottom: -3.5px;
   left: 0;
   width: 50%;
   opacity: 0;
@@ -362,7 +580,8 @@
 
 /* ------------------------------------------------------------------
    Entrance sequence. `--s` is the slot (node 0, connector 1, node 1, ...),
-   `--m` the modules slot, `--k` the chip index.
+   `--m` the modules slot, `--k` the chip index. State changes (border, shadow,
+   color, press scale) use their own short transitions with no delay.
    ------------------------------------------------------------------ */
 .arch-node,
 .arch-link,
@@ -380,8 +599,11 @@
 
 .arch-node {
   transition:
-    opacity 450ms var(--ease-out-quart) var(--arch-t),
-    transform 650ms var(--ease-out-expo) var(--arch-t);
+    opacity 400ms var(--ease-out-quart) var(--arch-t),
+    transform 600ms var(--ease-out-expo) var(--arch-t),
+    border-color 200ms var(--ease-out-quart),
+    box-shadow 200ms var(--ease-out-quart),
+    scale 150ms var(--ease-out-quart);
 }
 
 .arch-line {
@@ -392,11 +614,13 @@
   transition:
     opacity 200ms var(--ease-out-quart) calc(var(--arch-t) + 130ms),
     transform 350ms var(--ease-out-expo) calc(var(--arch-t) + 130ms),
-    color 400ms var(--ease-out-quart);
+    color 200ms var(--ease-out-quart);
 }
 
 .arch-branch {
-  transition: transform 200ms var(--ease-out-quart) var(--arch-t);
+  transition:
+    transform 200ms var(--ease-out-quart) var(--arch-t),
+    background-color 200ms var(--ease-out-quart);
 }
 
 .arch-mods {
@@ -407,13 +631,17 @@
   --arch-chip-t: calc(var(--arch-base) + var(--m, 0) * var(--arch-step) + 120ms + var(--k, 0) * 60ms);
   transition:
     opacity 400ms var(--ease-out-quart) var(--arch-chip-t),
-    transform 550ms var(--ease-out-expo) var(--arch-chip-t);
+    transform 550ms var(--ease-out-expo) var(--arch-chip-t),
+    border-color 200ms var(--ease-out-quart),
+    color 200ms var(--ease-out-quart),
+    box-shadow 200ms var(--ease-out-quart),
+    scale 150ms var(--ease-out-quart);
 }
 
 @media (prefers-reduced-motion: no-preference) {
   .js [data-reveal]:not(.is-revealed) .arch-node {
     opacity: 0;
-    transform: translate3d(0, 10px, 0) scale(0.97);
+    transform: translate3d(0, 10px, 0) scale(0.98);
   }
 
   .js [data-reveal]:not(.is-revealed) .arch-line {
@@ -446,125 +674,367 @@
 }
 
 /* ------------------------------------------------------------------
-   Active card: static accents, then the travelling pulse.
+   Inspecting. Screen only: print shows the plain diagram.
    ------------------------------------------------------------------ */
-@media (hover: hover) and (pointer: fine) {
-  .case-study:is(:hover, :has(:focus-visible)) .arch-canvas::after {
+@media screen {
+  .arch-node[data-state="active"]::after,
+  .arch-node[data-state="active"] .arch-icon::after,
+  .arch-node[data-match]::after,
+  .arch-node[data-match] .arch-icon::after,
+  .arch-chip[data-state="active"]::after {
     opacity: 1;
   }
 
-  .case-study:is(:hover, :has(:focus-visible)) .arch-line::after {
+  /* Linked: the active node's neighbours, or a module's node and an active node's modules. */
+  .arch-node[data-state="linked"],
+  .arch-chip[data-state="linked"] {
+    border-color: color-mix(in srgb, var(--color-accent) 40%, var(--color-line-strong));
+  }
+
+  /* Dim: a slight step back, with color tokens so text keeps AA contrast. */
+  .arch-node[data-state="dim"] {
+    border-color: var(--color-line);
+    box-shadow: none;
+  }
+
+  .arch-node[data-state="dim"] .arch-detail {
+    color: var(--color-fg-muted);
+  }
+
+  .arch-node[data-state="dim"] .arch-icon {
+    opacity: 0.6;
+  }
+
+  .arch-chip[data-state="dim"] {
+    border-color: var(--color-line);
+    color: var(--color-fg-subtle);
+  }
+
+  /* Pinned (aria-pressed) keeps a soft ring while another part is previewed. */
+  .arch-node[aria-pressed="true"] {
+    border-color: color-mix(in srgb, var(--color-accent) 50%, var(--color-line-strong));
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent),
+      var(--arch-node-shadow);
+  }
+
+  .arch-chip[aria-pressed="true"] {
+    border-color: color-mix(in srgb, var(--color-accent) 50%, var(--color-line-strong));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent);
+  }
+
+  /* Lit connectors: the ones touching the active node, or joining two matched nodes. */
+  .arch-link[data-lit] .arch-line::after {
     opacity: 1;
   }
 
-  .case-study:is(:hover, :has(:focus-visible)) .arch-head {
+  .arch-link[data-lit] .arch-head {
+    color: var(--color-accent);
+  }
+
+  .arch-branch[data-lit] {
+    background-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
+  }
+
+  /* Press feedback. :active covers the mouse; `data-pressed` is set by the explorer for touch
+     and pen (at least 150 ms), where :active can lag behind the finger or never show. */
+  .arch-node:is(:active, [data-pressed]),
+  .arch-chip:is(:active, [data-pressed]) {
+    scale: 0.98;
+  }
+
+  /* The touch flash: border and icon tile in accent at once, fading back over the base 200 ms. */
+  .arch-node[data-pressed]::after,
+  .arch-node[data-pressed] .arch-icon::after,
+  .arch-chip[data-pressed]::after {
+    opacity: 1;
+    transition-duration: 60ms;
+  }
+}
+
+/* One data-flow pulse per lit connector, in order (`--o`): into the active node, then out. */
+@media screen and (prefers-reduced-motion: no-preference) {
+  .arch-link[data-lit] .arch-pulse {
+    animation: arch-flow-y 650ms var(--ease-out-quart);
+    animation-delay: calc(60ms + var(--o, 0) * 260ms);
+  }
+
+  .arch-branch[data-lit] .arch-branch-pulse {
+    animation: arch-flow-x 600ms var(--ease-out-quart);
+    animation-delay: calc(60ms + var(--o, 0) * 260ms);
+  }
+}
+
+/* ------------------------------------------------------------------
+   Data flow. The explorer sets [data-flowing] for two cycles when the diagram comes into view
+   or the header's "Architecture" button is pressed, and for as long as a mouse rests on the
+   card. Each cycle lights the nodes from top to bottom
+   (`--i`), sends a pulse down every connector between them and ticks its arrowhead, then lights
+   the modules. It pauses while a part is inspected or a stack chip highlights nodes, and
+   reduced motion leaves it out. --arch-cycle and --arch-gap come from the explorer; the
+   keyframe percentages below assume its 2.4s cycle.
+   ------------------------------------------------------------------ */
+@media screen and (prefers-reduced-motion: no-preference) {
+  .arch-canvas[data-flowing]::after {
+    opacity: 1;
+  }
+
+  .arch-canvas[data-flowing]:not([data-inspecting]):not(:has([data-match])) :is(.arch-node, .arch-icon)::after {
+    animation: arch-lit var(--arch-cycle) var(--ease-out-quart) infinite;
+    animation-delay: calc(var(--i, 0) * var(--arch-gap) + 80ms);
+  }
+
+  /* The pulse leaves the node above as it lights and reaches the node below as that one does. */
+  .arch-canvas[data-flowing]:not([data-inspecting]):not(:has([data-match])) .arch-pulse {
+    animation: arch-travel-y var(--arch-cycle) linear infinite;
+    animation-delay: calc((var(--i, 1) - 1) * var(--arch-gap) + 140ms);
+  }
+
+  .arch-canvas[data-flowing]:not([data-inspecting]):not(:has([data-match])) .arch-line::after {
+    animation: arch-wire var(--arch-cycle) var(--ease-out-quart) infinite;
+    animation-delay: calc((var(--i, 1) - 1) * var(--arch-gap) + 140ms);
+  }
+
+  .arch-canvas[data-flowing]:not([data-inspecting]):not(:has([data-match])) .arch-head {
+    animation: arch-head-tick var(--arch-cycle) var(--ease-out-quart) infinite;
+    animation-delay: calc(var(--i, 1) * var(--arch-gap) + 30ms);
+  }
+
+  .arch-canvas[data-flowing]:not([data-inspecting]):not(:has([data-match])) .arch-branch-pulse {
+    animation: arch-travel-x var(--arch-cycle) linear infinite;
+    animation-delay: calc(var(--i, 0) * var(--arch-gap) + 220ms);
+  }
+
+  .arch-canvas[data-flowing]:not([data-inspecting]):not(:has([data-match])) .arch-chip::after {
+    animation: arch-lit var(--arch-cycle) var(--ease-out-quart) infinite;
+    animation-delay: calc(var(--i, 0) * var(--arch-gap) + 420ms + var(--k, 0) * 90ms);
+  }
+}
+
+/* Reduced motion: a still highlight on the active card instead of the flow. */
+@media screen and (hover: hover) and (pointer: fine) and (prefers-reduced-motion: reduce) {
+  .case-study:hover .arch-canvas:not([data-inspecting]) .arch-node {
+    border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-line-strong));
+  }
+
+  .case-study:hover .arch-canvas:not([data-inspecting]) .arch-head {
     color: var(--color-accent);
   }
 }
 
-/* The flow sequence: `--arch-runs` cycles, then everything rests (fill mode none returns each
-   element to its resting style, which is also every keyframe's start and end). */
-@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
-  .case-study:is(:hover, :has(:focus-visible)) :is(.arch-node, .arch-icon)::after {
-    animation: arch-lit var(--arch-cycle) var(--ease-out-quart) var(--arch-runs);
-    animation-delay: calc(var(--i, 0) * var(--arch-gap));
-  }
-
-  /* Each pulse leaves just after the previous node lights and lands as the next one does. */
-  .case-study:is(:hover, :has(:focus-visible)) .arch-pulse {
-    animation: arch-pulse-y var(--arch-cycle) linear var(--arch-runs);
-    animation-delay: calc((var(--i, 1) - 1) * var(--arch-gap) + 90ms);
-  }
-
-  .case-study:is(:hover, :has(:focus-visible)) .arch-head {
-    animation: arch-head-tick var(--arch-cycle) var(--ease-out-quart) var(--arch-runs);
-    animation-delay: calc((var(--i, 1) - 1) * var(--arch-gap) + 90ms);
-  }
-
-  .case-study:is(:hover, :has(:focus-visible)) .arch-branch-pulse {
-    animation: arch-pulse-x var(--arch-cycle) linear var(--arch-runs);
-    animation-delay: calc(var(--i, 0) * var(--arch-gap) + 120ms);
-  }
-
-  .case-study:is(:hover, :has(:focus-visible)) .arch-chip::after {
-    animation: arch-lit var(--arch-cycle) var(--ease-out-quart) var(--arch-runs);
-    animation-delay: calc(var(--i, 0) * var(--arch-gap) + 300ms + var(--k, 0) * 70ms);
-  }
-}
-
-/* Reduced motion: a static highlight instead of the sequence. */
-@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: reduce) {
-  .case-study:is(:hover, :has(:focus-visible)) .arch-node {
-    border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-line-strong));
-  }
-}
-
-/* Lit overlay of a node, icon or module chip: opacity only. */
+/* A node or module lights up, holds, then fades back (about 0.12s in, 0.5s on, 0.55s out). */
 @keyframes arch-lit {
-  0%,
-  42%,
+  0% {
+    opacity: 0;
+  }
+  5%,
+  27% {
+    opacity: 1;
+  }
+  50%,
   100% {
     opacity: 0;
   }
-  8%,
-  18% {
-    opacity: 1;
-  }
 }
 
-@keyframes arch-pulse-y {
+@keyframes arch-travel-y {
   0% {
     opacity: 0;
     transform: translate3d(0, 0, 0);
   }
   3%,
-  11% {
+  13% {
     opacity: 1;
   }
-  14%,
+  16%,
   100% {
     opacity: 0;
     transform: translate3d(0, 100%, 0);
   }
 }
 
-@keyframes arch-head-tick {
-  0%,
-  11%,
-  24%,
-  100% {
-    transform: none;
-  }
-  15% {
-    transform: translate3d(0, 1px, 0) scale(1.25);
-  }
-}
-
-@keyframes arch-pulse-x {
+@keyframes arch-travel-x {
   0% {
     opacity: 0;
     transform: translate3d(-50%, 0, 0);
   }
-  2%,
-  7% {
+  3%,
+  12% {
     opacity: 1;
   }
-  10%,
+  15%,
   100% {
     opacity: 0;
     transform: translate3d(100%, 0, 0);
   }
 }
 
-/* Printing / saving as PDF: the complete diagram, no motion states. */
+/* The connector warms up behind its pulse, then settles back to its resting tint. */
+@keyframes arch-wire {
+  0% {
+    opacity: var(--arch-wire-rest);
+  }
+  6%,
+  30% {
+    opacity: 1;
+  }
+  55%,
+  100% {
+    opacity: var(--arch-wire-rest);
+  }
+}
+
+/* The arrowhead flashes and nudges down as the pulse arrives. */
+@keyframes arch-head-tick {
+  0% {
+    color: var(--arch-head-rest);
+    transform: none;
+  }
+  4% {
+    color: var(--color-accent-strong);
+    transform: translate3d(0, 1.5px, 0);
+  }
+  20% {
+    color: var(--color-accent);
+    transform: none;
+  }
+  45%,
+  100% {
+    color: var(--arch-head-rest);
+    transform: none;
+  }
+}
+
+/* Pulses rest at opacity 0 before and after (fill mode none returns to the resting style). */
+@keyframes arch-flow-y {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0);
+  }
+  20%,
+  75% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(0, 100%, 0);
+  }
+}
+
+@keyframes arch-flow-x {
+  0% {
+    opacity: 0;
+    transform: translate3d(-50%, 0, 0);
+  }
+  20%,
+  75% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(100%, 0, 0);
+  }
+}
+
+/* ------------------------------------------------------------------
+   Inspector. Every panel shares one grid cell, so the inspector is as tall as its
+   longest panel and never jumps; only the shown panel is visible. The shown panel
+   fades in, the previous one leaves at once (no overlapping text).
+   ------------------------------------------------------------------ */
+.arch-panels {
+  display: grid;
+}
+
+.arch-panel {
+  grid-area: 1 / 1;
+  min-width: 0;
+  visibility: hidden;
+  opacity: 0;
+  translate: 0 4px;
+}
+
+.arch-panel[data-shown] {
+  visibility: visible;
+  opacity: 1;
+  translate: none;
+  transition:
+    opacity 250ms var(--ease-out-quart),
+    translate 300ms var(--ease-out-expo);
+}
+
+/* The rest hint comes back a beat later and a little softer, so releasing a part reads as the
+   inspector settling rather than the text snapping. */
+.arch-panel[data-kind="rest"][data-shown] {
+  transition:
+    opacity 350ms var(--ease-out-quart) 40ms,
+    translate 400ms var(--ease-out-expo) 40ms;
+}
+
+/* No JavaScript: every node's description, as a list (the rest hint is `.js-only`). */
+html:not(.js) .arch-panels {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+html:not(.js) .arch-panel {
+  visibility: visible;
+  opacity: 1;
+  translate: none;
+}
+
+html:not(.js) .arch-panel[data-kind="module"] {
+  display: none;
+}
+
+/* Printing / saving as PDF: the complete diagram in its final state, no motion or inspect
+   states, and every node's description listed under it. */
 @media print {
+  .arch {
+    break-inside: avoid;
+  }
+
+  :is(.case-index, .case-rule, .case-title, .case-dash, .case-stack-item),
   :is(.arch-node, .arch-line, .arch-head, .arch-branch, .arch-mods, .arch-chip) {
     opacity: 1 !important;
     transform: none !important;
   }
 
+  .case-sheen,
+  .arch-replay-icon,
   .arch-pulse,
   .arch-branch-pulse {
     display: none;
+  }
+
+  .arch-panels {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .arch-panel {
+    visibility: visible !important;
+    opacity: 1 !important;
+    translate: none !important;
+  }
+
+  .arch-panel:is([data-kind="rest"], [data-kind="module"]),
+  .arch-clear {
+    display: none !important;
+  }
+}
+
+/* Windows High Contrast: tints and glows are dropped, so mark the states with system colors. */
+@media (forced-colors: active) {
+  .arch-node:is([data-state="active"], [data-match], [aria-pressed="true"]),
+  .arch-chip:is([data-state="active"], [aria-pressed="true"]) {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+
+  .arch-node[data-state="linked"],
+  .arch-chip[data-state="linked"] {
+    border-color: Highlight;
   }
 }
