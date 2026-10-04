@@ -32,8 +32,9 @@ import { cn } from "@/lib/utils";
  * - Signal ripple: the whole explorer is one reveal and each domain card is its own, so on a
  *   phone a domain ripples as it scrolls into view. When a domain reveals, the hub lights,
  *   then its header, group labels and chips light in reading order (`--i`), at most about
- *   650 ms from first to last (`--dna-step`). On desktop the hub wires draw first and the
- *   ripple runs down each column (`--j`) as its wire arrives (`--dna-order`).
+ *   1 s from first to last (`--dna-step`). Everything waits ENTRANCE_WAIT_MS (0.8 s) after the
+ *   reveal first, so the map is in view when it starts. On desktop the hub wires draw first
+ *   and the ripple runs down each column (`--j`) as its wire arrives (`--dna-order`).
  * - Pinning blooms the chip's ring. Where no wires show (stacked layout, or touch at any
  *   width) the connected chips pulse once in reading order (`data-pulse`, `--k`). On desktop
  *   the curved links draw in from the active chip, each a little after the previous (`--k`).
@@ -104,8 +105,16 @@ const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
 /** While a preview shows, the pointer has to rest this long on another chip to switch to it. */
 const HOVER_SWITCH_MS = 100;
 /** Signal ripple: one item every 50 ms, squeezed so a domain spans at most about 650 ms. */
-const RIPPLE_STEP_MS = 50;
-const RIPPLE_SPAN_MS = 650;
+const RIPPLE_STEP_MS = 70;
+const RIPPLE_SPAN_MS = 1000;
+/**
+ * Entrance pause: once the map is revealed, everything waits this long before the wires, the
+ * ripple and the counters start, so the visitor has scrolled it into view. Written on the root
+ * as --dna-wait for tech-dna.css, and passed to the counters.
+ */
+const ENTRANCE_WAIT_MS = 800;
+/** Counters take their time too, in step with the slower ripple. */
+const COUNT_MS = 1200;
 /** Connected chips pulse once after a pin without wires: each bloom, the gap, and the gap's cap. */
 const PULSE_MS = 600;
 const PULSE_STAGGER_MS = 40;
@@ -957,7 +966,7 @@ export function TechDna({ graph, hub }: TechDnaProps) {
   } as CSSProperties;
 
   return (
-    <div className="dna" data-reveal="">
+    <div className="dna" data-reveal="" style={{ "--dna-wait": `${ENTRANCE_WAIT_MS}ms` } as CSSProperties}>
       <div ref={graphRef} className="dna-graph relative" onPointerLeave={onGraphPointerLeave}>
         {/* Blueprint dot grid (desktop) */}
         <div aria-hidden="true" className="dna-dots pointer-events-none absolute inset-0 hidden rounded-[inherit] lg:block" />
@@ -977,7 +986,7 @@ export function TechDna({ graph, hub }: TechDnaProps) {
               pathLength={1}
               className="dna-wire"
               data-state={link.state}
-              style={{ "--dna-delay": `${80 + link.order * 60}ms` } as CSSProperties}
+              style={{ "--dna-delay": `${100 + link.order * 110}ms` } as CSSProperties}
             />
           ))}
           {crossLinks.map((link) => (
@@ -1006,10 +1015,10 @@ export function TechDna({ graph, hub }: TechDnaProps) {
             </div>
             <p className="flex w-full flex-wrap gap-x-4 gap-y-1 border-t border-line pt-2.5 font-mono text-xs leading-4 text-fg-subtle sm:ml-auto sm:block sm:w-auto sm:border-0 sm:pt-0 sm:text-right lg:ml-2 lg:border-l lg:pl-4">
               <span className="block">
-                <CountUp value={layout.nodeCount} /> skills
+                <CountUp value={layout.nodeCount} delay={ENTRANCE_WAIT_MS} duration={COUNT_MS} /> skills
               </span>
               <span className="block">
-                <CountUp value={usedCount} /> used in projects or roles
+                <CountUp value={usedCount} delay={ENTRANCE_WAIT_MS} duration={COUNT_MS} /> used in projects or roles
               </span>
             </p>
           </div>
@@ -1058,7 +1067,7 @@ export function TechDna({ graph, hub }: TechDnaProps) {
                       {domain.label}
                     </h3>
                     <span aria-hidden="true" className="ml-auto font-mono text-xs text-fg-subtle tabular-nums">
-                      <CountUp value={domain.size} />
+                      <CountUp value={domain.size} delay={ENTRANCE_WAIT_MS} duration={COUNT_MS} />
                     </span>
                   </div>
 

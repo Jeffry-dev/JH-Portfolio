@@ -9,6 +9,8 @@ interface CountUpProps {
   value: number;
   /** Length of the count in ms. */
   duration?: number;
+  /** Pause in ms between the reveal and the start of the count (0 is shown meanwhile). */
+  delay?: number;
   className?: string;
 }
 
@@ -24,7 +26,7 @@ interface CountUpProps {
  * Assistive tech reads a static sr-only copy of the final value; the visible, counting copy is
  * aria-hidden (and not selectable), so a screen reader never announces an intermediate number.
  */
-export function CountUp({ value, duration = 900, className }: CountUpProps) {
+export function CountUp({ value, duration = 900, delay = 0, className }: CountUpProps) {
   const ref = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
@@ -33,23 +35,27 @@ export function CountUp({ value, duration = 900, className }: CountUpProps) {
 
     const final = String(value);
     let frame = 0;
+    let wait = 0;
 
     const stop = () => {
       if (frame) cancelAnimationFrame(frame);
+      window.clearTimeout(wait);
       frame = 0;
     };
 
     const play = () => {
       stop();
-      const start = performance.now();
-      const tick = (now: number) => {
-        const t = Math.min(1, (now - start) / duration);
-        const eased = 1 - (1 - t) ** 3;
-        el.textContent = t < 1 ? String(Math.round(value * eased)) : final;
-        frame = t < 1 ? requestAnimationFrame(tick) : 0;
-      };
       el.textContent = "0";
-      frame = requestAnimationFrame(tick);
+      wait = window.setTimeout(() => {
+        const start = performance.now();
+        const tick = (now: number) => {
+          const t = Math.min(1, (now - start) / duration);
+          const eased = 1 - (1 - t) ** 3;
+          el.textContent = t < 1 ? String(Math.round(value * eased)) : final;
+          frame = t < 1 ? requestAnimationFrame(tick) : 0;
+        };
+        frame = requestAnimationFrame(tick);
+      }, delay);
     };
 
     const host = el.closest<HTMLElement>("[data-reveal]");
@@ -80,7 +86,7 @@ export function CountUp({ value, duration = 900, className }: CountUpProps) {
       observer.disconnect();
       stop();
     };
-  }, [value, duration]);
+  }, [value, duration, delay]);
 
   return (
     <>

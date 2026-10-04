@@ -17,6 +17,12 @@
   transition: opacity 600ms var(--ease-out-expo);
 }
 
+/* Entrance pacing. The map itself fades in at once; the wires, the ripple and the counters wait
+   --dna-wait (0.8 s, set on the root by tech-dna.tsx), then light at an unhurried pace. */
+.dna {
+  --dna-light-ms: 600ms;
+}
+
 .js .dna[data-reveal]:not(.is-revealed) {
   transform: none;
 }
@@ -302,8 +308,9 @@ html:not(.js) .dna-head::before {
 
 /* ==================================================================
    Signal ripple (entrance). The hub lights as the explorer reveals; then, as each domain
-   reveals, its header, group labels and chips light in reading order (`--i`, set inline;
-   `--dna-step` is 50 ms, or less so a big domain finishes within about 650 ms) and rest.
+   reveals and after the --dna-wait pause, its header, group labels and chips light in reading
+   order (`--i`, set inline; `--dna-step` is 70 ms, or less so a big domain finishes within
+   about 1 s) and rest.
    Used chips glow at the edge, toolkit chips tint, labels and the header ink turn accent.
    Replays with the reveal replay (the classes come back); a reveal without an entrance
    (.reveal-settled) and reduced motion skip it. Desktop timing is further down.
@@ -328,19 +335,19 @@ html:not(.js) .dna-head::before {
 
 @media (prefers-reduced-motion: no-preference) {
   .js .dna.is-revealed:not(.reveal-settled) .dna-hub::before {
-    animation: dna-light 650ms var(--ease-out-quart) 150ms both;
+    animation: dna-light 900ms var(--ease-out-quart) var(--dna-wait, 800ms) both;
   }
 
   .js .dna-domain.is-revealed:not(.reveal-settled) .dna-chip::after {
-    animation: dna-light 360ms var(--ease-out-quart) both;
-    animation-delay: calc(240ms + var(--i, 0) * var(--dna-step, 50ms));
+    animation: dna-light var(--dna-light-ms) var(--ease-out-quart) both;
+    animation-delay: calc(var(--dna-wait, 800ms) + 240ms + var(--i, 0) * var(--dna-step, 70ms));
   }
 
   .js .dna-domain.is-revealed:not(.reveal-settled) .dna-head-icon,
   .js .dna-domain.is-revealed:not(.reveal-settled) .dna-head h3,
   .js .dna-domain.is-revealed:not(.reveal-settled) .dna-row-label {
-    animation: dna-ink 420ms var(--ease-out-quart) both;
-    animation-delay: calc(240ms + var(--i, 0) * var(--dna-step, 50ms));
+    animation: dna-ink var(--dna-light-ms) var(--ease-out-quart) both;
+    animation-delay: calc(var(--dna-wait, 800ms) + 240ms + var(--i, 0) * var(--dna-step, 70ms));
   }
 }
 
@@ -568,7 +575,7 @@ html:not(.js) .dna-head::before {
 /* Drawn once per entrance. A jump or an upward scroll reveals without an entrance
    (.reveal-settled in globals.css), so the wires are simply there. */
 .js .dna.is-revealed .dna-wire {
-  animation: dna-draw 600ms var(--ease-out-expo) var(--dna-delay, 0ms) backwards;
+  animation: dna-draw 750ms var(--ease-out-expo) calc(var(--dna-wait, 800ms) + var(--dna-delay, 0ms)) backwards;
 }
 
 .dna-wire[data-state="active"] {
@@ -877,41 +884,42 @@ html:not(.js) .dna-head::before {
   }
 }
 
-/* Desktop signal ripple: the hub glows as its wires leave it (the wires take 80 ms + 60 ms per
-   domain to start and about 450 ms to visibly arrive); each header lights as its wire lands,
-   then the ripple runs down the column (`--j`: position in the lane, so side-by-side lanes
-   run together), lighting the spine tick, the group diamonds and the chips in turn. The
+/* Desktop signal ripple, after the --dna-wait pause: the hub glows as its wires leave it (the
+   wires take 100 ms + 110 ms per domain to start and about 550 ms to visibly arrive); each
+   header lights as its wire lands, then the ripple runs down the column (`--j`: position in
+   the lane, so side-by-side lanes run together, 85 ms apart), lighting the spine tick, the
+   group diamonds and the chips in turn. The
    columns carry data-reveal-with="(min-width: 64rem)", so here they reveal at the same moment
    as the explorer and every column stays in step with the wires. */
 @media (width >= 64rem) and (prefers-reduced-motion: no-preference) {
   /* Shared delay. Declared on the domain so every item below reads the same value; each item
      then adds its own lane position. */
   .js .dna.is-revealed:not(.reveal-settled) .dna-domain {
-    --dna-arrive: calc(520ms + var(--dna-order, 0) * 60ms);
+    --dna-arrive: calc(var(--dna-wait, 800ms) + 650ms + var(--dna-order, 0) * 110ms);
   }
 
   .js .dna.is-revealed:not(.reveal-settled) .dna-hub::before {
-    animation: dna-light 800ms var(--ease-out-quart) 40ms both;
+    animation: dna-light 950ms var(--ease-out-quart) calc(var(--dna-wait, 800ms) + 40ms) both;
   }
 
   .js .dna.is-revealed:not(.reveal-settled) .dna-head::after {
-    animation: dna-light 480ms var(--ease-out-quart) var(--dna-arrive, 0ms) both;
+    animation: dna-light 800ms var(--ease-out-quart) var(--dna-arrive, 0ms) both;
   }
 
   .js .dna.is-revealed:not(.reveal-settled) .dna-head::before,
   .js .dna.is-revealed:not(.reveal-settled) .dna-row::after {
-    animation: dna-wire-lit 480ms var(--ease-out-quart) calc(var(--dna-arrive, 0ms) + var(--j, 0) * 50ms) both;
+    animation: dna-wire-lit var(--dna-light-ms) var(--ease-out-quart) calc(var(--dna-arrive, 0ms) + var(--j, 0) * 85ms) both;
   }
 
   /* Same specificity as the stacked rules above and declared later, so these win here. */
   .js .dna-domain.is-revealed:not(.reveal-settled) .dna-chip::after {
-    animation: dna-light 360ms var(--ease-out-quart) calc(var(--dna-arrive, 0ms) + var(--j, 0) * 50ms) both;
+    animation: dna-light var(--dna-light-ms) var(--ease-out-quart) calc(var(--dna-arrive, 0ms) + var(--j, 0) * 85ms) both;
   }
 
   .js .dna-domain.is-revealed:not(.reveal-settled) .dna-head-icon,
   .js .dna-domain.is-revealed:not(.reveal-settled) .dna-head h3,
   .js .dna-domain.is-revealed:not(.reveal-settled) .dna-row-label {
-    animation: dna-ink 420ms var(--ease-out-quart) calc(var(--dna-arrive, 0ms) + var(--j, 0) * 50ms) both;
+    animation: dna-ink var(--dna-light-ms) var(--ease-out-quart) calc(var(--dna-arrive, 0ms) + var(--j, 0) * 85ms) both;
   }
 }
 
