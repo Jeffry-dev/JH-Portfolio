@@ -4,7 +4,6 @@ import { Bricolage_Grotesque, Instrument_Sans, JetBrains_Mono } from "next/font/
 import { profile } from "@/data/profile";
 import { siteUrl } from "@/lib/site";
 import { Backdrop } from "@/components/layout/backdrop";
-import { MotionProvider } from "@/components/motion/motion-provider";
 import { RevealObserver } from "@/components/motion/reveal-observer";
 import { AmbientCursor } from "@/components/motion/ambient-cursor";
 import "./globals.css";
@@ -119,7 +118,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
         />
         <Backdrop />
         <AmbientCursor />
-        <MotionProvider>{children}</MotionProvider>
+        {children}
         <RevealObserver />
       </body>
     </html>

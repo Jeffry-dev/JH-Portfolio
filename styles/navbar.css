@@ -1,0 +1,248 @@
+/* Navbar and mobile menu transitions (components/layout/navbar.tsx), plus the theme-switch
+   cross-fade used where the View Transitions API is missing (lib/theme.ts). CSS only; no
+   animation library. */
+
+/* ------------------------------------------------------------------
+   Section indicator: the logo subtitle rolls up to the section being read.
+   The outgoing label stays mounted for one roll so both can move.
+   ------------------------------------------------------------------ */
+@media (prefers-reduced-motion: no-preference) {
+  .indicator-in {
+    animation: indicator-in 0.4s var(--ease-out-expo) both;
+  }
+  .indicator-out {
+    animation: indicator-out 0.4s var(--ease-out-expo) both;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .indicator-out {
+    display: none;
+  }
+}
+
+@keyframes indicator-in {
+  from { opacity: 0; transform: translate3d(0, 100%, 0); }
+}
+
+@keyframes indicator-out {
+  to { opacity: 0; transform: translate3d(0, -100%, 0); }
+}
+
+/* ------------------------------------------------------------------
+   Desktop links: one pill background glides to the current section instead of each link
+   painting its own. The pill is the list's ::before, revealed through a clip-path that the
+   component sets from the active link's offsets (--pill-left / --pill-right, in px, measured
+   in a frame after every change and resize) and shows with [data-pill-visible]. clip-path
+   keeps the pill's round ends exact at every width, which a scaled transform would not.
+   [data-pill-jump] is set for one frame when the pill first appears, so it fades in where it
+   belongs instead of sliding there from nowhere. Where clip-path is unavailable, the active
+   link paints its own background; without JavaScript there is no current section at all.
+   ------------------------------------------------------------------ */
+.nav-pill {
+  position: relative;
+}
+
+.nav-pill::before {
+  content: "";
+  position: absolute;
+  /* Top and bottom match the list's p-1; the sides stay 0 so the offsetLeft clip lines up. */
+  inset: 0.25rem 0;
+  border-radius: 9999px;
+  pointer-events: none;
+  background-color: color-mix(in srgb, var(--color-tint) 8%, transparent);
+  clip-path: inset(0 var(--pill-right, 100%) 0 var(--pill-left, 0px) round 9999px);
+  opacity: 0;
+  transition:
+    clip-path 450ms var(--ease-out-expo),
+    opacity 200ms var(--ease-out-quart);
+}
+
+.nav-pill[data-pill-visible]::before {
+  opacity: 1;
+}
+
+.nav-pill[data-pill-jump]::before {
+  transition: none;
+}
+
+@supports not (clip-path: inset(0 round 9999px)) {
+  .nav-pill a[aria-current="true"] {
+    background-color: color-mix(in srgb, var(--color-tint) 8%, transparent);
+  }
+}
+
+/* Windows high contrast drops the tinted pill; the current link is underlined instead (component). */
+@media (forced-colors: active) {
+  .nav-pill::before {
+    display: none;
+  }
+}
+
+/* ------------------------------------------------------------------
+   Brand tile ("JH"): a light sweeps across it on hover, on keyboard focus and on tap. The tap
+   sweep runs under [data-shine], which the component sets on pointer down and clears when the
+   sweep ends, so a short press still gets the whole sweep. Two keyframe names with the same
+   frames, so a tap after a long hover starts a fresh sweep.
+   ------------------------------------------------------------------ */
+.nav-brand {
+  position: relative;
+  overflow: hidden;
+}
+
+.nav-brand::after {
+  content: "";
+  position: absolute;
+  inset: -40%;
+  pointer-events: none;
+  background: linear-gradient(
+    115deg,
+    transparent 38%,
+    color-mix(in srgb, var(--color-accent) 28%, transparent) 50%,
+    transparent 62%
+  );
+  opacity: 0;
+  transform: translate3d(-70%, 0, 0);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  a:focus-visible > .nav-brand::after {
+    animation: brand-shine 650ms var(--ease-out-quart) both;
+  }
+  /* Real hover only: on touch screens :hover sticks to the tapped link. */
+  @media (hover: hover) and (pointer: fine) {
+    a:hover > .nav-brand::after {
+      animation: brand-shine 650ms var(--ease-out-quart) both;
+    }
+  }
+  /* Same specificity as the hover rule and declared after it, so a tap always wins. */
+  a > .nav-brand[data-shine]::after {
+    animation: brand-shine-tap 650ms var(--ease-out-quart) both;
+  }
+}
+
+@keyframes brand-shine {
+  0% { opacity: 0; transform: translate3d(-70%, 0, 0); }
+  20% { opacity: 1; }
+  100% { opacity: 0; transform: translate3d(70%, 0, 0); }
+}
+
+@keyframes brand-shine-tap {
+  0% { opacity: 0; transform: translate3d(-70%, 0, 0); }
+  20% { opacity: 1; }
+  100% { opacity: 0; transform: translate3d(70%, 0, 0); }
+}
+
+/* ------------------------------------------------------------------
+   Menu button: the icon swaps with a short turn. Only once the menu has been used
+   (.menu-icon-swap is added by the component), never on first paint.
+   ------------------------------------------------------------------ */
+@media (prefers-reduced-motion: no-preference) {
+  .menu-icon-swap {
+    animation: menu-icon-in 260ms var(--ease-out-quart) both;
+  }
+}
+
+@keyframes menu-icon-in {
+  from { opacity: 0; transform: rotate(-90deg) scale(0.7); }
+}
+
+/* ------------------------------------------------------------------
+   Mobile menu. The panel is always in the DOM and [data-open] shows it (below 64rem only, so
+   it never covers the desktop bar). Entry starts from @starting-style; on exit the panel stays
+   displayed until its transition ends (allow-discrete). Where either is unsupported, the panel
+   simply appears and disappears. Opens in about 0.5 s: panel 320 ms, items 280 ms with a
+   20 ms stagger (delays come from --item-delay on each item, the email and theme rows
+   included). Closes in under 300 ms: the items leave bottom first, 15 ms apart (--item-out-delay),
+   while the panel rolls back up into the bar and fades over its second half.
+   ------------------------------------------------------------------ */
+.mobile-menu {
+  display: none;
+  opacity: 0;
+  transition-property: opacity, clip-path, display;
+  transition-duration: 180ms, 280ms, 280ms;
+  transition-delay: 100ms, 0ms, 0ms;
+  transition-timing-function: var(--ease-out-quart);
+  transition-behavior: allow-discrete;
+}
+
+@media (width < 64rem) {
+  .mobile-menu[data-open] {
+    display: block;
+    opacity: 1;
+    transition-duration: 320ms;
+    transition-delay: 0ms;
+    transition-timing-function: var(--ease-out-expo);
+  }
+
+  @starting-style {
+    .mobile-menu[data-open] {
+      opacity: 0;
+    }
+  }
+}
+
+/* The panel unrolls from the bar and its items rise in only when motion is welcome;
+   with reduced motion it appears and disappears without movement. */
+@media (prefers-reduced-motion: no-preference) {
+  .mobile-menu {
+    clip-path: inset(0 0 100% 0);
+  }
+  .mobile-menu[data-open] {
+    clip-path: inset(0);
+  }
+
+  @starting-style {
+    .mobile-menu[data-open] {
+      clip-path: inset(0 0 100% 0);
+    }
+  }
+
+  .mobile-menu[data-open] .mobile-menu-item {
+    animation: menu-item-in 280ms var(--ease-out-expo) both;
+    animation-delay: var(--item-delay, 0ms);
+  }
+
+  /* Reverse stagger on close. While closed and hidden the panel has no boxes, so this never
+     runs at load; it only plays during the exit transition. */
+  .mobile-menu:not([data-open]) .mobile-menu-item {
+    animation: menu-item-out 160ms var(--ease-out-quart) both;
+    animation-delay: var(--item-out-delay, 0ms);
+  }
+}
+
+@keyframes menu-item-in {
+  from { opacity: 0; transform: translate3d(0, 10px, 0); }
+}
+
+@keyframes menu-item-out {
+  to { opacity: 0; transform: translate3d(0, 6px, 0); }
+}
+
+/* ------------------------------------------------------------------
+   Theme switch without the View Transitions API (lib/theme.ts): <html> carries .theme-fade for
+   about 300 ms while the new theme is applied, and every colour settles over 250 ms instead of
+   snapping. A blanket rule, acceptable as a one-off for a theme switch. It is unlayered, so it
+   stands in for utility transitions during that moment; the command palette is left out, since
+   toggling the theme from it closes it at the same time and its exit must keep fading.
+   ------------------------------------------------------------------ */
+html.theme-fade,
+html.theme-fade body,
+html.theme-fade body :not(.command-palette, .command-palette *),
+html.theme-fade body :not(.command-palette, .command-palette *)::before,
+html.theme-fade body :not(.command-palette, .command-palette *)::after {
+  transition:
+    background-color 250ms var(--ease-out-quart),
+    border-color 250ms var(--ease-out-quart),
+    color 250ms var(--ease-out-quart),
+    fill 250ms var(--ease-out-quart),
+    stroke 250ms var(--ease-out-quart);
+}
+
+/* ------------------------------------------------------------------
+   Jump targets (lib/focus-target.ts). A section focused after a menu or palette jump, so
+   keyboard users continue reading from there, is not itself a control: no focus ring, like #main.
+   ------------------------------------------------------------------ */
+[data-jump-target]:focus {
+  outline: none;
+}
