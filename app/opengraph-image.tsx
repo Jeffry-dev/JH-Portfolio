@@ -2,12 +2,16 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ImageResponse } from "next/og";
 import { profile } from "@/data/profile";
+import { siteHost } from "@/lib/site";
 
-export const alt = `${profile.name} | ${profile.title}`;
+const { status, availability, stack } = profile.statusCard;
+
+export const alt = `${profile.name}, ${profile.title}: ${profile.tagline}. ${status}.${availability ? ` ${availability}.` : ""}`;
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
-const highlights = ["Windows Server", "Active Directory", "Networking", "Next.js", "NestJS", "SQL Server"];
+/** The real domain, so feeds that hide the URL still show it. "PORTFOLIO" until a site URL is set. */
+const label = siteHost === "localhost" ? null : siteHost;
 
 // Fonts are bundled locally (SIL OFL, see assets/fonts) so the build never needs the network.
 const fontsDir = join(process.cwd(), "assets/fonts");
@@ -17,7 +21,21 @@ const [displayBold, displayRegular, mono] = await Promise.all([
   readFile(join(fontsDir, "JetBrainsMono-Regular.ttf")),
 ]);
 
-/** Social preview card, generated at build time from the profile data. */
+const chip = {
+  display: "flex",
+  padding: "8px 16px",
+  borderRadius: 10,
+  border: "1px solid rgba(255,255,255,0.12)",
+  background: "rgba(255,255,255,0.03)",
+  fontFamily: "JetBrains Mono",
+  fontSize: 20,
+  color: "#a4a6ad",
+} as const;
+
+/**
+ * Social preview card, generated at build time. Everything comes from data/profile.ts (the same
+ * status, availability and stack as the hero status bar) and lib/site.ts (the domain).
+ */
 export default function OpenGraphImage() {
   return new ImageResponse(
     (
@@ -30,9 +48,15 @@ export default function OpenGraphImage() {
           justifyContent: "space-between",
           padding: "68px 80px",
           background: "#08090b",
-          backgroundImage:
-            "radial-gradient(circle at 88% 0%, rgba(242,181,68,0.20), transparent 45%), linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px)",
-          backgroundSize: "100% 100%, 64px 64px, 64px 64px",
+          // Amber glow, then a fade so the 72px grid shows toward the top right, like the site's backdrop.
+          // The fade is linear: Satori draws radial gradients with transparent inner stops as opaque.
+          backgroundImage: [
+            "radial-gradient(circle at 88% 0%, rgba(242,181,68,0.20), transparent 45%)",
+            "linear-gradient(205deg, rgba(8,9,11,0) 15%, rgba(8,9,11,0.94) 70%)",
+            "linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px)",
+            "linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)",
+          ].join(", "),
+          backgroundSize: "100% 100%, 100% 100%, 72px 72px, 72px 72px",
           color: "#ecebe6",
           fontFamily: "Bricolage Grotesque",
         }}
@@ -56,25 +80,37 @@ export default function OpenGraphImage() {
                 <path d="M17.75 9v14M25.75 9v14M17.75 16h8" stroke="#ecebe6" strokeWidth="2.6" strokeLinecap="round" />
               </svg>
             </div>
-            <div style={{ display: "flex", fontFamily: "JetBrains Mono", fontSize: 22, color: "#8b8e96", letterSpacing: 3 }}>
-              PORTFOLIO
+            <div
+              style={{
+                display: "flex",
+                fontFamily: "JetBrains Mono",
+                fontSize: 22,
+                color: "#8b8e96",
+                letterSpacing: label ? 0.5 : 3,
+              }}
+            >
+              {label ?? "PORTFOLIO"}
             </div>
           </div>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              padding: "10px 20px",
-              borderRadius: 999,
-              border: "1px solid rgba(255,255,255,0.12)",
-              fontSize: 22,
-              color: "#a4a6ad",
-            }}
-          >
-            <div style={{ width: 12, height: 12, borderRadius: 999, background: "#4ade80" }} />
-            {`Currently at ${profile.current.company}`}
-          </div>
+          {availability ? (
+            // Green means "available" only, as in the hero status bar.
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                padding: "10px 20px",
+                borderRadius: 999,
+                border: "1px solid rgba(74,222,128,0.28)",
+                background: "rgba(74,222,128,0.08)",
+                fontSize: 22,
+                color: "#4ade80",
+              }}
+            >
+              <div style={{ width: 12, height: 12, borderRadius: 999, background: "#4ade80" }} />
+              {availability}
+            </div>
+          ) : null}
         </div>
 
         <div style={{ display: "flex", flexDirection: "column" }}>
@@ -87,24 +123,18 @@ export default function OpenGraphImage() {
           <div style={{ display: "flex", marginTop: 6, fontSize: 36, color: "#a4a6ad" }}>{profile.tagline}</div>
         </div>
 
-        <div style={{ display: "flex", gap: 12 }}>
-          {highlights.map((item) => (
-            <div
-              key={item}
-              style={{
-                display: "flex",
-                padding: "8px 16px",
-                borderRadius: 10,
-                border: "1px solid rgba(255,255,255,0.12)",
-                background: "rgba(255,255,255,0.03)",
-                fontFamily: "JetBrains Mono",
-                fontSize: 20,
-                color: "#a4a6ad",
-              }}
-            >
-              {item}
-            </div>
-          ))}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 24 }}>
+          <div style={{ display: "flex", gap: 12 }}>
+            {stack.map((item) => (
+              <div key={item} style={chip}>
+                {item}
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 24, color: "#a4a6ad" }}>
+            <div style={{ width: 10, height: 10, borderRadius: 999, border: "2px solid #8b8e96" }} />
+            {status}
+          </div>
         </div>
       </div>
     ),
