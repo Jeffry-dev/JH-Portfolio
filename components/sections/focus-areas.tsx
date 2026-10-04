@@ -1,18 +1,29 @@
+import type { CSSProperties } from "react";
 import { focusAreas } from "@/data/focus-areas";
 import { Icon } from "@/components/ui/icon";
 import { Reveal } from "@/components/motion/reveal";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { cn } from "@/lib/utils";
 
+/** Inline custom properties (the stagger order `--i`). */
+type StyleVars = CSSProperties & Record<`--${string}`, number | string>;
+
+/**
+ * Each card is its own reveal, so on a phone (one column) every card animates as it scrolls
+ * into view instead of the whole grid playing at once above the fold; in a row the delay
+ * staggers the cards 60 ms apart. Inside a card the icon tile pops in (scale 0.8 to 1), then
+ * the title and the description follow (`.stagger`, `data-reveal-item` in app/globals.css).
+ * The cards carry `data-spotlight`: the border light follows a mouse, a tap ripples from the finger.
+ */
 export function FocusAreas() {
   return (
-    <section id="what-i-do" aria-labelledby="what-i-do-title" className="section-y border-t border-line">
+    <section id="what-i-do" aria-labelledby="what-i-do-label what-i-do-title" className="section-y border-t border-line">
       <div className="container-page">
         <SectionHeading
           section="what-i-do"
-          title="Two sides of my work: running systems and building software."
+          title="From APIs, web apps and databases to Windows Server and networks."
           titleId="what-i-do-title"
-          description="The areas I work across, from the infrastructure people rely on every day to the applications that run on top of it."
+          description="The areas I work across, on both the development side and the systems side."
         />
 
         {/* Bento: 2 columns on tablets, 4 on wide screens where "wide" cards span two. */}
@@ -24,23 +35,30 @@ export function FocusAreas() {
               delay={(index % 4) * 0.06}
               className={cn(area.size === "wide" && "xl:col-span-2")}
             >
+              {/* Not interactive, so no lift: only the border and the spotlight respond to the pointer. */}
               <article
                 data-spotlight
-                className="card spotlight group flex h-full flex-col rounded-2xl p-5 transition-[border-color,transform] duration-500 ease-out-expo hover:-translate-y-1 hover:border-line-strong sm:p-7"
+                className="card spotlight stagger group flex h-full flex-col rounded-2xl p-5 transition-colors duration-200 hover:border-line-strong sm:p-7"
               >
-                {/* Phones: icon and title side by side. Larger screens: icon row, then the title. */}
+                {/* Phones: icon and title side by side. Larger screens: icon, then the title. */}
                 <div className="flex items-center gap-4 sm:flex-col sm:items-stretch sm:gap-8">
-                  <div className="flex items-start justify-between">
-                    <span className="grid size-10 shrink-0 place-items-center rounded-xl border border-line bg-tint/[0.03] text-accent transition-colors duration-300 group-hover:border-accent/40 sm:size-11">
+                  {/* The pop lives on a wrapper, so the tile keeps its own border transition on hover. */}
+                  <span data-reveal-item="pop" style={{ "--i": 0 } as StyleVars} className="flex shrink-0">
+                    <span className="grid size-10 shrink-0 place-items-center rounded-xl border border-line bg-tint/[0.03] text-accent transition-colors duration-200 group-hover:border-accent/40 sm:size-11">
                       <Icon name={area.icon} className="size-5" />
                     </span>
-                    <span aria-hidden="true" className="hidden font-mono text-xs text-fg-subtle sm:inline">
-                      {String(index + 1).padStart(2, "0")}
-                    </span>
-                  </div>
-                  <h3 className="text-lg font-semibold tracking-[-0.015em] text-fg sm:text-[1.375rem]">{area.title}</h3>
+                  </span>
+                  <h3
+                    data-reveal-item=""
+                    style={{ "--i": 1 } as StyleVars}
+                    className="text-xl leading-tight font-semibold tracking-[-0.02em] text-fg sm:text-[1.375rem]"
+                  >
+                    {area.title}
+                  </h3>
                 </div>
                 <p
+                  data-reveal-item=""
+                  style={{ "--i": 2 } as StyleVars}
                   className={cn(
                     "mt-3 text-[0.9375rem] leading-relaxed text-fg-muted sm:mt-2.5",
                     area.size === "wide" && "xl:max-w-md",
