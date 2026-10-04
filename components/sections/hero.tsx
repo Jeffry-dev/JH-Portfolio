@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { ArrowDown, ArrowRight, Mail } from "lucide-react";
+import { ArrowRight, Mail } from "lucide-react";
 import { profile } from "@/data/profile";
 import { education } from "@/data/education";
 import { skillGroups } from "@/data/skills";
@@ -12,6 +12,12 @@ import { KineticName } from "@/components/hero/kinetic-name";
 import { Magnetic } from "@/components/motion/magnetic";
 import { Tilt } from "@/components/motion/tilt";
 
+/*
+ * Entrance timing (CSS keyframes in app/globals.css; the name's own stagger is in kinetic-name.tsx).
+ * The name starts first, then title, terminal, intro, buttons and status bar, so the whole hero
+ * settles within about 1.2s. The tagline rises a beat after the title, and the status bar's
+ * cells follow one another (status-card.tsx), so the hero lands in a cascade rather than at once.
+ */
 const delay = (ms: number) => ({ "--d": `${ms}ms` }) as CSSProperties;
 
 /** Generic entries of the "systems" skill group that the terminal's `ls ./systems` leaves out. */
@@ -25,8 +31,10 @@ function terminalData(): TerminalData {
     user: profile.firstName.toLowerCase(),
     name: profile.name,
     title: profile.title,
+    company: profile.current.company,
     status: profile.statusCard.status,
-    // Same list as the status card, so the hero names one stack.
+    availability: profile.statusCard.availability,
+    // Same list as the status bar, so the hero names one stack.
     stack: profile.statusCard.stack,
     systems: (skillGroups.find((group) => group.id === "systems")?.items ?? []).filter(
       (item) => !GENERIC_SYSTEMS.has(item),
@@ -47,11 +55,13 @@ function terminalData(): TerminalData {
 }
 
 export function Hero() {
+  // The depth layers (.hero-depth-*) run on the scroll(root) timeline; without CSS scroll
+  // timelines they read --scroll-y, written on <html> by components/motion/scroll-fallback.tsx.
   return (
     <section
       id="top"
       aria-labelledby="hero-title"
-      className="relative overflow-x-clip pt-28 pb-16 sm:pt-32 sm:pb-20 lg:pt-40 lg:pb-6"
+      className="relative overflow-x-clip pt-28 pb-16 sm:pt-32 sm:pb-20 lg:pt-40"
     >
       {/* Local glow behind the terminal */}
       <div
@@ -69,31 +79,36 @@ export function Hero() {
             <KineticName lines={[profile.firstName, profile.lastName]} />
           </h1>
 
+          {/* Role and employer on one line (the employer gets its own line on phones), then the
+              tagline. Sized so each stays on one line from 1280px; balanced where they wrap. */}
           <p
-            className="rise-y mt-6 font-display text-[clamp(1.375rem,2.6vw,1.875rem)] leading-tight font-medium tracking-[-0.02em] text-fg"
-            style={delay(380)}
+            className="rise-y mt-6 font-display text-[clamp(1.375rem,2.4vw,1.75rem)] leading-tight font-medium tracking-[-0.02em] text-balance text-fg"
+            style={delay(300)}
           >
             {profile.title}
-            <span className="block text-fg-subtle">{profile.tagline}</span>
+            <span className="text-fg-muted max-sm:block"> at {profile.current.company}</span>
+            {/* Its own rise on top of the title's, so the tagline settles last. */}
+            <span className="rise-y block text-fg-subtle" style={delay(380)}>
+              {profile.tagline}
+            </span>
           </p>
 
-          <p className="rise-y mt-5 max-w-xl text-base leading-relaxed text-fg-muted sm:text-lg" style={delay(440)}>
+          <p className="rise-y mt-5 max-w-xl text-base leading-relaxed text-fg-muted sm:text-lg" style={delay(360)}>
             {profile.intro}
           </p>
 
-          <div className="rise mt-9 flex flex-col gap-3 sm:flex-row sm:items-center" style={delay(560)}>
+          {/* The primary button is the page's only magnetic element. */}
+          <div className="rise mt-9 flex flex-col gap-3 sm:flex-row sm:items-center" style={delay(440)}>
             <Magnetic className="w-full sm:w-auto">
               <ButtonLink href="#projects" variant="primary" className="w-full sm:w-auto">
-                View my work
+                View projects
                 <ArrowRight aria-hidden="true" className="arrow-turn size-4" />
               </ButtonLink>
             </Magnetic>
-            <Magnetic className="w-full sm:w-auto" strength={0.22}>
-              <ButtonLink href="#contact" variant="secondary" className="w-full sm:w-auto">
-                <Mail aria-hidden="true" className="size-4" />
-                Contact me
-              </ButtonLink>
-            </Magnetic>
+            <ButtonLink href="#contact" variant="secondary" className="w-full sm:w-auto">
+              <Mail aria-hidden="true" className="size-4" />
+              Contact me
+            </ButtonLink>
             {profile.resumeUrl ? (
               <ButtonLink href={profile.resumeUrl} variant="ghost" target="_blank" rel="noopener noreferrer">
                 Download CV
@@ -103,9 +118,10 @@ export function Hero() {
           </div>
         </div>
 
-        <div className="hero-depth-visual lg:col-span-5">
-          <div className="rise-soft relative" style={delay(420)}>
-            <Tilt>
+        {/* Decorative and interactive only: every fact in it is on the page, so it is not printed. */}
+        <div className="hero-depth-visual lg:col-span-5 print:hidden">
+          <div className="rise-soft relative" style={delay(340)}>
+            <Tilt max={3}>
               <Terminal data={terminalData()} />
             </Tilt>
           </div>
@@ -113,18 +129,10 @@ export function Hero() {
       </div>
 
       {/* System status bar: full width under the hero, on every screen size. */}
-      <div className="hero-depth-facts container-page mt-14 sm:mt-16 lg:mt-20">
-        <div className="rise" style={delay(700)}>
+      <div className="hero-depth-facts container-page mt-14 sm:mt-16">
+        <div className="rise" style={delay(540)}>
           <StatusCard />
         </div>
-
-        <a
-          href="#about"
-          className="group mx-auto mt-8 hidden w-fit items-center gap-2 rounded-full px-3 py-2 font-mono text-xs text-fg-subtle transition-colors hover:text-fg lg:flex"
-        >
-          Scroll to explore
-          <ArrowDown aria-hidden="true" className="size-3.5 transition-transform duration-300 group-hover:translate-y-0.5" />
-        </a>
       </div>
     </section>
   );

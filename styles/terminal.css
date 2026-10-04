@@ -14,6 +14,36 @@
 }
 
 /* ------------------------------------------------------------------
+   Frame
+   While the intro types (data-typing, set by the component) a soft accent ring breathes
+   inside the frame. The glow is a static inset shadow on a pseudo-element and only its
+   opacity moves, so the frame's own shadow is never repainted; it fades out once the
+   prompt is ready. Above the content (z-index) but never in the way (pointer-events).
+   ------------------------------------------------------------------ */
+.terminal::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 32%, transparent),
+    inset 0 0 32px color-mix(in srgb, var(--color-accent) 9%, transparent);
+  transition: opacity 600ms var(--ease-out-quart);
+}
+
+.js .terminal[data-typing]::before {
+  animation: term-breathe 2.4s ease-in-out infinite;
+}
+
+@keyframes term-breathe {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+
+/* ------------------------------------------------------------------
    Scripted intro
    Lines that have not been typed yet are removed from layout only while JS runs
    (html.js), so visitors without JavaScript see the finished session.
@@ -61,6 +91,10 @@
    The focus ring sits on the whole prompt row (same look as the global
    :focus-visible outline) instead of a box around the bare input.
    ------------------------------------------------------------------ */
+.term-prompt {
+  position: relative;
+}
+
 .term-prompt:has(.term-input:focus-visible) {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
@@ -82,6 +116,28 @@
   }
 }
 
+/* Running a command, or tapping the body to type, flashes a soft accent tint behind the prompt
+   row for 150ms (data-flash, toggled by the component and cleared on animationend). The tint is
+   a pseudo-element over the row, so the flash never changes the row's own paint. */
+.term-prompt::after {
+  content: "";
+  position: absolute;
+  inset: -0.125rem -0.5rem;
+  border-radius: 6px;
+  pointer-events: none;
+  opacity: 0;
+  background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+}
+
+.term-prompt[data-flash]::after {
+  animation: term-flash 150ms var(--ease-out-quart) both;
+}
+
+@keyframes term-flash {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
 /* Hints in the status line fade in once the prompt accepts input. */
 .term-hint {
   animation: term-hint-in 0.6s var(--ease-out-quart) both;
@@ -92,9 +148,21 @@
   to { opacity: 1; }
 }
 
-/* Each new output block settles in quickly; never delays reading. */
+/* ------------------------------------------------------------------
+   Output
+   Each new block settles in quickly, and inside it (and inside the intro's listings)
+   every printed row rises in on its own, one every 40ms (--i from the component, capped
+   so a long list is in place within 600ms). Rows are in the layout from the first frame,
+   so printing never shifts anything, and never delays reading. Only while JS runs
+   (html.js): a visitor without JavaScript sees the finished session at once.
+   ------------------------------------------------------------------ */
 .term-entry {
   animation: term-entry-in 0.28s var(--ease-out-quart) both;
+}
+
+.js .term-row {
+  animation: term-entry-in 0.28s var(--ease-out-quart) both;
+  animation-delay: calc(min(var(--i, 0), 14) * 40ms);
 }
 
 @keyframes term-entry-in {
@@ -102,9 +170,13 @@
   to { opacity: 1; transform: none; }
 }
 
+/* Final states only: no breathing ring, no flash, rows and hints simply present. */
 @media (prefers-reduced-motion: reduce) {
   .term-hint,
-  .term-entry {
+  .term-entry,
+  .term-row,
+  .terminal::before,
+  .term-prompt::after {
     animation: none;
   }
 }
