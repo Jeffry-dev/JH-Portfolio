@@ -51,11 +51,14 @@ const icons: Record<IconName, LucideIcon> = {
 interface IconProps {
   name: IconName;
   className?: string;
-  strokeWidth?: number;
 }
 
-/** Decorative icon resolved by name. Always hidden from assistive tech. */
-export function Icon({ name, className, strokeWidth = 1.6 }: IconProps) {
+/**
+ * Decorative icon resolved by name. Always hidden from assistive tech.
+ * The stroke weight comes from the shared `svg.lucide` rule in app/globals.css, as for every
+ * other Lucide icon on the site.
+ */
+export function Icon({ name, className }: IconProps) {
   const Component = icons[name];
-  return <Component aria-hidden="true" focusable="false" className={className} strokeWidth={strokeWidth} />;
+  return <Component aria-hidden="true" focusable="false" className={className} />;
 }
