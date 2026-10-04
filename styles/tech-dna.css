@@ -1,36 +1,28 @@
 /* Technical DNA visualization (components/skills/tech-dna.tsx). Owned by the Technical DNA work.
    Colors come only from theme tokens, so both themes work without overrides.
-   Phones/tablets: stacked domain cards with wrapping chips. Desktop (64rem+): a hub, four
-   domain columns with tree spines, SVG wiring, and the info panel under the short columns. */
+   Phones/tablets: a short key, then stacked domain cards with wrapping chips, then the info
+   panel. Desktop (64rem+): a hub, four domain columns with tree spines, SVG wiring, the info
+   panel under the short columns and the key under the tall ones.
+   This file is not in a cascade layer, so it outranks Tailwind utilities: never set `display`
+   here on an element that also takes a display utility. */
 
 /* ==================================================================
-   Entrance: hub, then domain headers, then technologies.
-   The root carries data-reveal but does not fade itself; only its stages do.
+   Entrance (low motion): the explorer fades in as one piece, without a rise, and each domain
+   card is its own reveal with a short rise, so on a phone every domain gets its entrance (and
+   its signal ripple, below) as it scrolls into view. On desktop they all enter together: the
+   hub wires draw in, then the ripple runs down each column. Once per entrance.
    ================================================================== */
 .dna[data-reveal] {
-  transition: none;
+  --reveal-y: 0px;
+  transition: opacity 600ms var(--ease-out-expo);
 }
 
 .js .dna[data-reveal]:not(.is-revealed) {
-  opacity: 1;
   transform: none;
 }
 
-.dna-stage {
-  transition:
-    opacity 0.5s var(--ease-out-quart),
-    transform 0.7s var(--ease-out-expo);
-  transition-delay: var(--dna-delay, 0ms);
-}
-
-.js .dna[data-reveal]:not(.is-revealed) .dna-stage {
-  opacity: 0;
-  transform: translate3d(0, 8px, 0);
-}
-
-.js.reveal-fallback .dna[data-reveal] .dna-stage {
-  opacity: 1;
-  transform: none;
+.dna-domain[data-reveal] {
+  --reveal-y: 10px;
 }
 
 /* Instructions (and wire sockets) that only apply once the explorer is interactive. */
@@ -102,13 +94,22 @@ html:not(.js) .dna-head::before {
 
 .dna-panel {
   grid-column: 1 / -1;
-  min-height: 14rem;
 }
 
-@media (width >= 40rem) {
-  .dna-panel {
-    min-height: 12rem;
-  }
+/* The invisible copy of the largest entry only reserves height on desktop. */
+.dna-sizer {
+  display: none;
+}
+
+/* Key and hints: above the domains on phones and tablets, so a visitor learns the chips are
+   interactive before scrolling past them. */
+.dna-guide {
+  grid-column: 1 / -1;
+  order: -1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0 0.25rem 0.25rem;
 }
 
 /* ==================================================================
@@ -116,6 +117,9 @@ html:not(.js) .dna-head::before {
    ================================================================== */
 .dna-chip {
   position: relative;
+  /* Own stacking context: the light overlay (::after, z-index -1) sits over the chip's
+     background but under its text. */
+  isolation: isolate;
   display: inline-flex;
   align-items: center;
   min-height: 2.75rem;
@@ -134,37 +138,128 @@ html:not(.js) .dna-head::before {
     color 200ms var(--ease-out-quart),
     background-color 200ms var(--ease-out-quart),
     border-color 200ms var(--ease-out-quart),
-    box-shadow 200ms var(--ease-out-quart);
+    box-shadow 200ms var(--ease-out-quart),
+    transform 150ms var(--ease-out-quart);
 }
 
-@media (hover: hover) and (pointer: fine) {
-  .dna-chip:hover {
-    border-color: color-mix(in srgb, var(--color-tint) 28%, transparent);
-  }
+/* Signal light: an accent outline and glow on the chip's own edge, shown by the entrance
+   ripple (below). Toolkit chips get a faint tint instead of the glow. */
+.dna-chip::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  border: 1px solid var(--color-accent);
+  border-radius: inherit;
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent),
+    0 0 18px color-mix(in srgb, var(--color-accent) 30%, transparent);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.dna-row[data-tier="toolkit"] .dna-chip::after {
+  border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
+  background-color: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  box-shadow: none;
+}
+
+/* Toolkit tier: listed as a skill, but no project or role on this site uses it. The dashed
+   shape (not a color) carries the tier, so it never reads as a hover or selection state, and
+   it stays visible while the chip is dimmed. */
+.dna-row[data-tier="toolkit"] .dna-chip {
+  border-style: dashed;
+  background-color: color-mix(in srgb, var(--color-surface) 35%, var(--color-bg-raised));
+  color: var(--color-fg-muted);
 }
 
 /* Active: the technology being explained. */
 .dna-row[data-state="active"] .dna-chip {
+  border-style: solid;
   border-color: var(--color-accent);
   background-color: var(--color-accent-muted);
+  color: var(--color-fg);
 }
+
+/* Linked and not linked chips are slightly see-through while a skill is active: a link that has
+   to pass behind one stays faintly visible through it, so it reads as passing behind, not as a
+   line that starts at a skill it isn't connected to. */
 
 /* Connected: shares a project or a role with the active skill. */
 .dna-row[data-state="linked"] .dna-chip {
   border-color: color-mix(in srgb, var(--color-accent) 60%, var(--color-line-strong));
+  background-color: color-mix(in srgb, var(--color-surface) 72%, transparent);
 }
 
-/* Not linked (other domains): muted with color tokens (not opacity), so the text keeps AA contrast. */
+/* Not linked: muted with color tokens (not opacity), so the text keeps AA contrast. */
 .dna-row[data-state="dim"] .dna-chip {
   border-color: var(--color-line);
-  /* Opaque, so links pass cleanly behind it. */
-  background-color: color-mix(in srgb, var(--color-surface) 35%, var(--color-bg-raised));
+  background-color: color-mix(in srgb, var(--color-bg-raised) 72%, transparent);
   color: var(--color-fg-subtle);
 }
 
-/* Pinned selection (aria-pressed) keeps a soft ring even while another node is previewed. */
+/* Hover on a chip that isn't highlighted yet (a preview switches only once the pointer rests). */
+@media (hover: hover) and (pointer: fine) {
+  .dna-row:is([data-state="idle"], [data-state="dim"]) .dna-chip:hover {
+    border-color: color-mix(in srgb, var(--color-tint) 28%, transparent);
+  }
+}
+
+/* Press: a small, quick give and an accent flash on the border (120 ms down, the usual
+   200 ms back up), so a tap answers at once on every device. Never a bounce. Outranks the
+   tier, state and hover rules above, so every chip flashes the same way. */
+.dna .dna-row .dna-chip:active {
+  border-color: var(--color-accent);
+  transform: scale(0.97);
+  transition-duration: 120ms;
+}
+
+/* Pinned selection (aria-pressed) keeps a soft ring even while another node is previewed.
+   Pinning blooms the ring out from the edge and settles it (tap feedback that a finger can't
+   cover): the implicit end keyframe is the resting ring. */
 .dna-chip[aria-pressed="true"] {
   --dna-ring: color-mix(in srgb, var(--color-accent) 22%, transparent);
+  animation: dna-pin 320ms var(--ease-out-quart);
+}
+
+@keyframes dna-pin {
+  0% {
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 50%, transparent);
+  }
+  45% {
+    box-shadow: 0 0 0 7px color-mix(in srgb, var(--color-accent) 14%, transparent);
+  }
+}
+
+/* Connected chips pulse once, in reading order (`--k`), after a pin that no wires explain
+   (stacked layout, or touch at any width). The implicit end keyframe is the chip's own state. */
+.dna-row[data-pulse] .dna-chip {
+  animation: dna-bloom 600ms var(--ease-out-quart) both;
+  animation-delay: min(var(--k, 0) * 40ms, 400ms);
+}
+
+/* Every other pin uses a copy of the keyframes: a new animation name restarts the bloom on
+   chips that stay connected from one pin to the next. */
+.dna-row[data-pulse="b"] .dna-chip {
+  animation-name: dna-bloom-b;
+}
+
+@keyframes dna-bloom {
+  35% {
+    border-color: var(--color-accent);
+    box-shadow:
+      0 0 0 4px color-mix(in srgb, var(--color-accent) 20%, transparent),
+      0 0 16px color-mix(in srgb, var(--color-accent) 35%, transparent);
+  }
+}
+
+@keyframes dna-bloom-b {
+  35% {
+    border-color: var(--color-accent);
+    box-shadow:
+      0 0 0 4px color-mix(in srgb, var(--color-accent) 20%, transparent),
+      0 0 16px color-mix(in srgb, var(--color-accent) 35%, transparent);
+  }
 }
 
 /* Port: where a connection lands on a linked chip. Absolutely placed, so it never shifts layout. */
@@ -185,10 +280,12 @@ html:not(.js) .dna-head::before {
     transform 240ms var(--ease-out-expo);
 }
 
+/* The port lands as its link (desktop) or pulse arrives: links draw over 450 ms, each a little
+   after the previous one (`--k`, see .dna-link). */
 .dna-row[data-state="linked"] .dna-port {
   opacity: 1;
   transform: none;
-  transition-delay: 180ms;
+  transition-delay: calc(260ms + min(var(--k, 0) * 30ms, 150ms));
 }
 
 /* ==================================================================
@@ -204,24 +301,96 @@ html:not(.js) .dna-head::before {
 }
 
 /* ==================================================================
+   Signal ripple (entrance). The hub lights as the explorer reveals; then, as each domain
+   reveals, its header, group labels and chips light in reading order (`--i`, set inline;
+   `--dna-step` is 50 ms, or less so a big domain finishes within about 650 ms) and rest.
+   Used chips glow at the edge, toolkit chips tint, labels and the header ink turn accent.
+   Replays with the reveal replay (the classes come back); a reveal without an entrance
+   (.reveal-settled) and reduced motion skip it. Desktop timing is further down.
+   ================================================================== */
+.dna-hub {
+  isolation: isolate;
+}
+
+.dna-hub::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 70%, transparent);
+  border-radius: inherit;
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--color-accent) 14%, transparent),
+    0 0 28px color-mix(in srgb, var(--color-accent) 28%, transparent);
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .js .dna.is-revealed:not(.reveal-settled) .dna-hub::before {
+    animation: dna-light 650ms var(--ease-out-quart) 150ms both;
+  }
+
+  .js .dna-domain.is-revealed:not(.reveal-settled) .dna-chip::after {
+    animation: dna-light 360ms var(--ease-out-quart) both;
+    animation-delay: calc(240ms + var(--i, 0) * var(--dna-step, 50ms));
+  }
+
+  .js .dna-domain.is-revealed:not(.reveal-settled) .dna-head-icon,
+  .js .dna-domain.is-revealed:not(.reveal-settled) .dna-head h3,
+  .js .dna-domain.is-revealed:not(.reveal-settled) .dna-row-label {
+    animation: dna-ink 420ms var(--ease-out-quart) both;
+    animation-delay: calc(240ms + var(--i, 0) * var(--dna-step, 50ms));
+  }
+}
+
+/* A light comes up fast and fades slowly. */
+@keyframes dna-light {
+  0% {
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Ink and border turn accent, hold, then return to whatever state the element is in
+   (implicit start and end keyframes). */
+@keyframes dna-ink {
+  20%,
+  45% {
+    color: var(--color-accent);
+    border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
+  }
+}
+
+/* A hairline or socket on the desktop tree fills with accent, then settles. */
+@keyframes dna-wire-lit {
+  20%,
+  55% {
+    border-color: var(--color-accent);
+    background-color: var(--color-accent);
+  }
+}
+
+/* ==================================================================
    Info panel content
    ================================================================== */
 
-/* Sources and connections read as sentences on small screens (compact docked panel)... */
-.dna-sources,
-.dna-sources > li,
-.dna-tags,
-.dna-tag {
-  display: inline;
-}
-
-.dna-sources > li:not(:last-child)::after,
-.dna-tag:not(:last-child)::after {
-  content: ", ";
-  color: var(--color-fg-muted);
+/* Small screens (compact docked panel): one source per line, read as a sentence:
+   "Market Desk with NestJS, React and TypeScript". The link is a full 44px tap row. */
+.dna-sources > li {
+  display: block;
 }
 
 .dna-source {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  max-width: 100%;
   color: var(--color-fg);
   font-size: 0.875rem;
   line-height: 1.5;
@@ -233,23 +402,45 @@ html:not(.js) .dna-head::before {
     text-decoration-color 200ms var(--ease-out-quart);
 }
 
-.dna-source:hover {
+.dna-source:hover,
+.dna-source:focus-visible {
   color: var(--color-accent);
   text-decoration-color: currentColor;
 }
 
-.dna-source-kind,
 .dna-source-icon {
   display: none;
 }
 
-.dna-tags {
+.dna-with {
   font-size: 0.875rem;
   line-height: 1.5;
   color: var(--color-fg-muted);
 }
 
-/* Legend swatches mirror the chip states. The plain swatch is the default chip ("Same domain"). */
+/* Clear (desktop header) and close (docked panel) buttons: colour transitions plus a press. */
+.dna-clear,
+.dna-close {
+  transition:
+    color 200ms var(--ease-out-quart),
+    background-color 200ms var(--ease-out-quart),
+    border-color 200ms var(--ease-out-quart),
+    transform 150ms var(--ease-out-quart);
+}
+
+.dna-clear:active {
+  transform: scale(0.95);
+  transition-duration: 120ms;
+}
+
+.dna-close:active {
+  background-color: color-mix(in srgb, var(--color-tint) 8%, transparent);
+  color: var(--color-fg);
+  transform: scale(0.92);
+  transition-duration: 120ms;
+}
+
+/* Legend swatches mirror the chips. The plain swatch is a used skill at rest. */
 .dna-key {
   position: relative;
   flex-shrink: 0;
@@ -258,6 +449,11 @@ html:not(.js) .dna-head::before {
   border: 1px solid var(--color-line-strong);
   border-radius: 0.25rem;
   background-color: var(--color-surface);
+}
+
+.dna-key[data-key="toolkit"] {
+  border-style: dashed;
+  background-color: color-mix(in srgb, var(--color-surface) 35%, var(--color-bg-raised));
 }
 
 .dna-key[data-key="active"] {
@@ -296,14 +492,14 @@ html:not(.js) .dna-head::before {
 .dna-kbd {
   display: inline-grid;
   place-items: center;
-  min-width: 1.25rem;
-  height: 1.125rem;
-  padding: 0 0.25rem;
+  min-width: 1.375rem;
+  height: 1.25rem;
+  padding: 0 0.3125rem;
   border: 1px solid var(--color-line-strong);
   border-radius: 0.25rem;
   background-color: color-mix(in srgb, var(--color-tint) 4%, transparent);
   font-family: var(--font-mono);
-  font-size: 0.625rem;
+  font-size: 0.6875rem;
   line-height: 1;
   color: var(--color-fg-muted);
 }
@@ -332,12 +528,26 @@ html:not(.js) .dna-head::before {
   html:has(.dna-panel[data-pinned]) {
     scroll-padding-bottom: calc(var(--dna-dock-h, 0px) + 1.5rem);
   }
+
+  /* The entry's lines (group, name, "Used in", each place) follow the slide 40 ms apart. The
+     entry is keyed by skill, so tapping another chip plays them again for the new one. */
+  .dna-panel[data-pinned] [data-dock-item] {
+    animation: dna-dock-item 320ms var(--ease-out-quart) both;
+    animation-delay: calc(60ms + var(--i, 0) * 40ms);
+  }
 }
 
 @keyframes dna-dock {
   from {
     opacity: 0.4;
     transform: translate3d(0, 10px, 0);
+  }
+}
+
+@keyframes dna-dock-item {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0);
   }
 }
 
@@ -355,16 +565,10 @@ html:not(.js) .dna-head::before {
     opacity 240ms var(--ease-out-quart);
 }
 
-.js .dna[data-reveal]:not(.is-revealed) .dna-wire {
-  opacity: 0;
-}
-
+/* Drawn once per entrance. A jump or an upward scroll reveals without an entrance
+   (.reveal-settled in globals.css), so the wires are simply there. */
 .js .dna.is-revealed .dna-wire {
-  animation: dna-draw 900ms var(--ease-out-expo) var(--dna-delay, 0ms) backwards;
-}
-
-.js.reveal-fallback .dna[data-reveal] .dna-wire {
-  opacity: 1;
+  animation: dna-draw 600ms var(--ease-out-expo) var(--dna-delay, 0ms) backwards;
 }
 
 .dna-wire[data-state="active"] {
@@ -375,13 +579,16 @@ html:not(.js) .dna-head::before {
   opacity: 0.45;
 }
 
-/* Links for the active technology draw in from it. */
+/* Links for the active technology draw in from it over 450 ms, each a little after the
+   previous one in reading order (`--k`, capped so a busy skill still settles within 600 ms).
+   Each path is keyed by its ends, so a new selection draws a fresh set. */
 .dna-link {
   fill: none;
   stroke: var(--color-accent);
   stroke-width: 1.25;
   opacity: 0.85;
-  animation: dna-draw 420ms var(--ease-out-quart) backwards;
+  animation: dna-draw 450ms var(--ease-out-quart) backwards;
+  animation-delay: min(var(--k, 0) * 30ms, 150ms);
 }
 
 @keyframes dna-draw {
@@ -408,8 +615,8 @@ html:not(.js) .dna-head::before {
 
   .dna-dots {
     background-image: radial-gradient(var(--grid-dot) 1px, transparent 1px);
-    background-size: 22px 22px;
-    background-position: 11px 11px;
+    background-size: 24px 24px;
+    background-position: 12px 12px;
     -webkit-mask-image: radial-gradient(ellipse 85% 70% at 50% 30%, #000 25%, transparent 80%);
     mask-image: radial-gradient(ellipse 85% 70% at 50% 30%, #000 25%, transparent 80%);
   }
@@ -444,14 +651,19 @@ html:not(.js) .dna-head::before {
     background-color: var(--color-accent);
   }
 
+  /* Row 1: the short domains. Row 2 (flexible): the rest of the tall domains and the top of
+     the panel. Row 3: the key under the tall domains, beside the bottom of the panel. */
   .dna-grid {
     grid-template-columns: repeat(var(--dna-tracks, 4), minmax(0, 1fr));
-    grid-template-rows: auto 1fr;
+    grid-template-rows: auto 1fr auto;
     column-gap: 1.25rem;
     row-gap: 1.75rem;
   }
 
-  .dna-domain {
+  /* No rise here: the hub wires are drawn to the columns' final positions. */
+  .dna-domain,
+  .dna-domain[data-reveal] {
+    --reveal-y: 0px;
     grid-column: var(--dna-col, auto) / span var(--dna-span, 1);
     grid-row: 1 / span var(--dna-rows, 1);
     padding: 0;
@@ -462,11 +674,27 @@ html:not(.js) .dna-head::before {
 
   /* Icon center sits at 24px from the header's left edge: the spine continues from there. */
   .dna-head {
+    isolation: isolate;
     margin-bottom: 0;
     padding: 0.4375rem 0.75rem 0.4375rem 0.5625rem;
     border: 1px solid var(--color-line-strong);
     border-radius: 0.75rem;
     background-color: var(--color-surface);
+  }
+
+  /* Signal light on the header card, lit as its hub wire arrives. */
+  .dna-head::after {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    z-index: -1;
+    border: 1px solid var(--color-accent);
+    border-radius: inherit;
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--color-accent) 16%, transparent),
+      0 0 20px color-mix(in srgb, var(--color-accent) 30%, transparent);
+    opacity: 0;
+    pointer-events: none;
   }
 
   .dna-lanes {
@@ -578,49 +806,56 @@ html:not(.js) .dna-head::before {
     right: -4px;
   }
 
-  /* Reserved height fits the longest entry (8 connections), so hovering never shifts the page. */
   .dna-panel {
     grid-column: var(--dna-panel-col, -3) / span var(--dna-panel-span, 2);
-    grid-row: 2;
+    grid-row: 2 / span 2;
     align-self: stretch;
-    min-height: 23rem;
     padding: 1.25rem;
   }
 
-  /* ...and as a list of rows plus tags on desktop. */
+  /* The live entry and the invisible copy of the largest one share one cell, so the panel is
+     always as tall as its largest entry at this width and hovering never shifts the page. */
+  .dna-panel-body {
+    display: grid;
+  }
+
+  .dna-panel-body > * {
+    grid-area: 1 / 1;
+    min-width: 0;
+  }
+
+  .dna-sizer {
+    display: block;
+    visibility: hidden;
+  }
+
+  .dna-guide {
+    order: 0;
+    grid-column: 1 / var(--dna-panel-col, -3);
+    grid-row: 3;
+    gap: 0.625rem;
+    padding: 1rem 0 0;
+    border-top: 1px solid var(--color-line);
+  }
+
+  /* ...and on desktop as rows: the place, then what it was used with on the line below. */
   .dna-sources {
     display: flex;
     flex-direction: column;
-    gap: 0.125rem;
-  }
-
-  .dna-sources > li {
-    display: block;
-  }
-
-  .dna-sources > li:not(:last-child)::after,
-  .dna-tag:not(:last-child)::after {
-    content: none;
+    gap: 0.625rem;
   }
 
   .dna-source {
-    display: inline-flex;
-    align-items: center;
     gap: 0.5rem;
     min-height: 1.75rem;
     font-size: 0.9375rem;
+    line-height: 1.35;
     text-decoration: none;
-  }
-
-  .dna-source-kind {
-    display: inline;
-    font-family: var(--font-mono);
-    font-size: 0.6875rem;
-    color: var(--color-fg-subtle);
   }
 
   .dna-source-icon {
     display: block;
+    flex-shrink: 0;
     width: 0.875rem;
     height: 0.875rem;
     color: var(--color-fg-subtle);
@@ -629,28 +864,54 @@ html:not(.js) .dna-head::before {
       transform 200ms var(--ease-out-quart);
   }
 
-  .dna-source:hover .dna-source-icon {
+  .dna-source:hover .dna-source-icon,
+  .dna-source:focus-visible .dna-source-icon {
     color: var(--color-accent);
-    transform: translate3d(1px, 1px, 0);
+    transform: translate3d(2px, 0, 0);
   }
 
-  .dna-tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.375rem;
+  .dna-with {
+    display: block;
+    font-size: 0.8125rem;
+    line-height: 1.45;
+  }
+}
+
+/* Desktop signal ripple: the hub glows as its wires leave it (the wires take 80 ms + 60 ms per
+   domain to start and about 450 ms to visibly arrive); each header lights as its wire lands,
+   then the ripple runs down the column (`--j`: position in the lane, so side-by-side lanes
+   run together), lighting the spine tick, the group diamonds and the chips in turn. The
+   columns carry data-reveal-with="(min-width: 64rem)", so here they reveal at the same moment
+   as the explorer and every column stays in step with the wires. */
+@media (width >= 64rem) and (prefers-reduced-motion: no-preference) {
+  /* Shared delay. Declared on the domain so every item below reads the same value; each item
+     then adds its own lane position. */
+  .js .dna.is-revealed:not(.reveal-settled) .dna-domain {
+    --dna-arrive: calc(520ms + var(--dna-order, 0) * 60ms);
   }
 
-  .dna-tag {
-    display: inline-flex;
-    align-items: center;
-    padding: 0.3125rem 0.5rem;
-    border: 1px solid var(--color-line);
-    border-radius: 0.375rem;
-    background-color: color-mix(in srgb, var(--color-tint) 3%, transparent);
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
-    line-height: 1;
-    color: var(--color-fg-muted);
+  .js .dna.is-revealed:not(.reveal-settled) .dna-hub::before {
+    animation: dna-light 800ms var(--ease-out-quart) 40ms both;
+  }
+
+  .js .dna.is-revealed:not(.reveal-settled) .dna-head::after {
+    animation: dna-light 480ms var(--ease-out-quart) var(--dna-arrive, 0ms) both;
+  }
+
+  .js .dna.is-revealed:not(.reveal-settled) .dna-head::before,
+  .js .dna.is-revealed:not(.reveal-settled) .dna-row::after {
+    animation: dna-wire-lit 480ms var(--ease-out-quart) calc(var(--dna-arrive, 0ms) + var(--j, 0) * 50ms) both;
+  }
+
+  /* Same specificity as the stacked rules above and declared later, so these win here. */
+  .js .dna-domain.is-revealed:not(.reveal-settled) .dna-chip::after {
+    animation: dna-light 360ms var(--ease-out-quart) calc(var(--dna-arrive, 0ms) + var(--j, 0) * 50ms) both;
+  }
+
+  .js .dna-domain.is-revealed:not(.reveal-settled) .dna-head-icon,
+  .js .dna-domain.is-revealed:not(.reveal-settled) .dna-head h3,
+  .js .dna-domain.is-revealed:not(.reveal-settled) .dna-row-label {
+    animation: dna-ink 420ms var(--ease-out-quart) calc(var(--dna-arrive, 0ms) + var(--j, 0) * 50ms) both;
   }
 }
 
@@ -685,12 +946,6 @@ html:not(.js) .dna-head::before {
   }
 }
 
-@media (width >= 80rem) {
-  .dna-panel {
-    min-height: 21rem;
-  }
-}
-
 /* Touch screens at desktop widths (e.g. tablets in landscape) keep 44px targets. */
 @media (width >= 64rem) and (pointer: coarse) {
   .dna-chip,
@@ -701,30 +956,94 @@ html:not(.js) .dna-head::before {
 }
 
 /* ==================================================================
-   Reduced motion: final states, no draw-in, no cascade delays.
+   Reduced motion: final states, no draw-in, no ripple, pulse or bloom, no delays, no press
+   scale. Colour feedback (press flash, states) stays, since it carries information.
    ================================================================== */
 @media (prefers-reduced-motion: reduce) {
-  .dna-stage,
   .dna-port,
   .dna-row[data-state="linked"] .dna-port {
     transition-delay: 0ms !important;
   }
-  .js .dna[data-reveal]:not(.is-revealed) .dna-stage {
-    transform: none;
-  }
   .dna-wire,
   .dna-link,
-  .dna-panel {
+  .dna-panel,
+  .dna-chip,
+  .dna-chip::after,
+  .dna-hub::before,
+  .dna-head::after,
+  .dna-head::before,
+  .dna-head-icon,
+  .dna-head h3,
+  .dna-row::after,
+  .dna-row-label,
+  [data-dock-item] {
     animation: none !important;
+  }
+  .dna .dna-row .dna-chip:active,
+  .dna-clear:active,
+  .dna-close:active {
+    transform: none;
   }
 }
 
-/* Printing: everything visible, nothing docked. */
-@media print {
-  .dna-stage {
-    opacity: 1 !important;
-    transform: none !important;
+/* ==================================================================
+   Forced colors (e.g. Windows High Contrast): fills, shadows and custom border colors are
+   replaced, so the states fall back to system colors, outlines and the dashed tier border.
+   ================================================================== */
+@media (forced-colors: active) {
+  .dna-row[data-state="active"] .dna-chip,
+  .dna-chip[aria-pressed="true"] {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
   }
+
+  .dna-row[data-state="linked"] .dna-chip {
+    border-color: Highlight;
+  }
+
+  .dna-row[data-state="dim"] .dna-chip {
+    color: GrayText;
+  }
+
+  .dna-port,
+  .dna-key[data-key="linked"]::before {
+    forced-color-adjust: none;
+    background-color: Highlight;
+    box-shadow: none;
+  }
+
+  .dna-link {
+    stroke: Highlight;
+  }
+
+  .dna-wire {
+    stroke: GrayText;
+  }
+
+  .dna-key[data-key="active"] {
+    outline: 2px solid Highlight;
+    outline-offset: 1px;
+  }
+
+  .dna-key[data-key="linked"] {
+    border-color: Highlight;
+  }
+
+  .dna-key-line {
+    forced-color-adjust: none;
+    background-color: CanvasText;
+  }
+
+  /* The signal lights would become plain system-colour outlines flashing on and off. */
+  .dna-chip::after,
+  .dna-hub::before,
+  .dna-head::after {
+    display: none;
+  }
+}
+
+/* Printing: everything visible, nothing docked, no lights or entrances. */
+@media print {
   .dna-wire {
     opacity: 1 !important;
     animation: none !important;
@@ -734,5 +1053,19 @@ html:not(.js) .dna-head::before {
     max-height: none !important;
     overflow: visible !important;
     box-shadow: none !important;
+  }
+  .dna-chip,
+  .dna-head-icon,
+  .dna-head h3,
+  .dna-head::before,
+  .dna-row::after,
+  .dna-row-label,
+  [data-dock-item] {
+    animation: none !important;
+  }
+  .dna-chip::after,
+  .dna-hub::before,
+  .dna-head::after {
+    display: none;
   }
 }

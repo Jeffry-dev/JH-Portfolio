@@ -1,28 +1,37 @@
 import { experience } from "@/data/experience";
 import { projects } from "@/data/projects";
 import { skillGroups } from "@/data/skills";
+import { experienceAnchor, projectAnchor } from "@/lib/tech-links";
 
 /**
  * Technical DNA: the Skills section drawn as a graph.
  *
  * Everything here is derived from data/skills.ts, data/projects.ts and data/experience.ts,
- * so editing those files updates the graph. Nothing in this file is hand-written content.
+ * so editing those files updates the graph. The only words written here are the domain
+ * labels and the noun a sentence uses for each role.
  *
  * - Nodes: every skill item, exactly once, sorted into four domains.
  * - Sources: each project's `stack`, plus the `tags` of the roles listed in
- *   `experienceSources` (the XpertBot internship and the SmartSource IT Specialist role).
+ *   `experienceSources` (the XpertBot internship and the SmartSource role). Only terms that
+ *   name a skill count; the others (e.g. ".NET", "IT support") are left out.
  * - Edges: two nodes are linked when they appear together in at least one source.
- *   Skills that never appear in a source (e.g. "Windows", which no project or role lists)
- *   get no edges; they relate only as members of their domain.
+ * - Tier: a skill that appears in at least one source is "used"; the others (e.g. "Windows
+ *   Server", which no project or role on the site lists) are "toolkit" and get no edges.
+ *   The tier only says whether the site shows where a skill was used. It is never a level.
  */
 
 export type DnaDomainId = "systems" | "software" | "data" | "workflow";
 
 export interface DnaSource {
-  /** Display name. Also the value stored in `usedIn` and `sharedIn`. */
+  /**
+   * Display name: the project title, or "<role>, <company>" for a role.
+   * Also the value stored in `usedIn` and `sharedIn`.
+   */
   name: string;
-  kind: "project" | "experience";
-  /** In-page anchor where the source is described. */
+  kind: "project" | "role";
+  /** How a sentence refers to it, e.g. "Market Desk" or "my internship at XpertBot Academy". */
+  phrase: string;
+  /** In-page anchor of the project case study or the Experience entry. */
   href: string;
 }
 
@@ -31,6 +40,7 @@ export interface DnaGroup {
   id: string;
   /** Skill group label from data/skills.ts, e.g. "Frontend". */
   label: string;
+  /** Used skills first, then toolkit skills, each in data/skills.ts order. */
   nodeIds: string[];
 }
 
@@ -51,12 +61,16 @@ export interface DnaConnection {
   sharedIn: string[];
 }
 
+/** "used": appears in at least one project stack or role. "toolkit": listed as a skill only. */
+export type DnaTier = "used" | "toolkit";
+
 export interface DnaNode {
   id: string;
   name: string;
   domain: DnaDomainId;
   groupId: string;
   groupLabel: string;
+  tier: DnaTier;
   /** Names of the sources this technology appears in (projects and roles). */
   usedIn: string[];
   /** Other technologies that share at least one source with this one. */
@@ -76,6 +90,8 @@ export interface TechDnaGraph {
   nodes: Record<string, DnaNode>;
   edges: DnaEdge[];
   sources: DnaSource[];
+  /** Lower-cased alternative spelling -> node id, e.g. "sql server" -> "microsoft-sql-server". */
+  aliases: Record<string, string>;
 }
 
 interface DomainDefinition {
@@ -108,13 +124,17 @@ const fallbackDomain: DnaDomainId = "software";
  * Anything not listed must match a skill name exactly. Intentionally unmapped:
  * ".NET" (in the SmartHub stack, but not a listed skill) and "Databases" (an internship
  * tag that is broader than, and not the same as, "Database design").
+ * Skill links elsewhere on the page (lib/tech-links.ts) resolve through this map too.
  */
 const aliases = new Map<string, string>([["SQL Server", "Microsoft SQL Server"]]);
 
-/** Roles from data/experience.ts whose `tags` count as sources, and how the graph names them. */
+/**
+ * Roles from data/experience.ts whose `tags` count as sources. `noun` is how a sentence
+ * refers to the role ("my internship at XpertBot Academy").
+ */
 const experienceSources = [
-  { experienceId: "xpertbot", name: "XpertBot internship" },
-  { experienceId: "smartsource", name: "IT Specialist role, SmartSource Consulting SAL" },
+  { experienceId: "xpertbot", noun: "internship" },
+  { experienceId: "smartsource", noun: "role" },
 ];
 
 function slugify(name: string): string {
@@ -167,6 +187,7 @@ function buildTechDna(): TechDnaGraph {
           domain: definition.id,
           groupId: group.id,
           groupLabel: group.label,
+          tier: "toolkit",
           usedIn: [],
           connections: [],
         };
@@ -189,12 +210,22 @@ function buildTechDna(): TechDnaGraph {
     ...projects.map((project) => ({
       name: project.title,
       kind: "project" as const,
-      href: `#project-${project.id}`,
+      phrase: project.title,
+      href: `#${projectAnchor(project.id)}`,
       terms: project.stack,
     })),
-    ...experienceSources.flatMap(({ experienceId, name }) => {
+    ...experienceSources.flatMap(({ experienceId, noun }) => {
       const item = experience.find((entry) => entry.id === experienceId);
-      return item ? [{ name, kind: "experience" as const, href: "#experience", terms: item.tags }] : [];
+      if (!item) return [];
+      return [
+        {
+          name: `${item.role}, ${item.company}`,
+          kind: "role" as const,
+          phrase: `my ${noun} at ${item.company}`,
+          href: `#${experienceAnchor(item.id)}`,
+          terms: item.tags,
+        },
+      ];
     }),
   ];
 
@@ -210,7 +241,10 @@ function buildTechDna(): TechDnaGraph {
       ),
     ].sort(byRank);
 
-    for (const id of ids) nodes[id].usedIn.push(source.name);
+    for (const id of ids) {
+      nodes[id].usedIn.push(source.name);
+      nodes[id].tier = "used";
+    }
 
     for (let i = 0; i < ids.length; i++) {
       for (let j = i + 1; j < ids.length; j++) {
@@ -231,9 +265,23 @@ function buildTechDna(): TechDnaGraph {
     node.connections.sort((a, b) => byRank(a.id, b.id));
   }
 
-  const sources = sourceDefinitions.map(({ name, kind, href }) => ({ name, kind, href }));
+  // Used skills lead each group, so every list reads the same way: solid chips, then dashed.
+  // Array.prototype.sort is stable, so each tier keeps the order of data/skills.ts. `rank` (and
+  // with it the order of connections) is unchanged.
+  const tierOrder = (id: string) => (nodes[id].tier === "used" ? 0 : 1);
+  for (const domain of domains) {
+    for (const group of domain.groups) group.nodeIds.sort((a, b) => tierOrder(a) - tierOrder(b));
+  }
 
-  return { domains, nodes, edges, sources };
+  const sources = sourceDefinitions.map(({ name, kind, phrase, href }) => ({ name, kind, phrase, href }));
+
+  const aliasIds: Record<string, string> = {};
+  for (const [term, skill] of aliases) {
+    const id = idByName.get(skill);
+    if (id) aliasIds[term.toLowerCase()] = id;
+  }
+
+  return { domains, nodes, edges, sources, aliases: aliasIds };
 }
 
 export const techDna: TechDnaGraph = buildTechDna();

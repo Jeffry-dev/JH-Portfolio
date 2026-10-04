@@ -2,6 +2,7 @@
 
 import {
   Fragment,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -11,31 +12,56 @@ import {
   type KeyboardEvent,
   type PointerEvent,
 } from "react";
-import { ArrowDownRight, CodeXml, Database, Server, UserRound, Workflow, X, type LucideIcon } from "lucide-react";
-import type { DnaDomain, DnaDomainId, DnaGroup, DnaNode, TechDnaGraph } from "@/data/tech-dna";
+import { ArrowRight, CodeXml, Database, Server, UserRound, Workflow, X, type LucideIcon } from "lucide-react";
+import type { DnaDomain, DnaDomainId, DnaGroup, DnaNode, DnaSource, TechDnaGraph } from "@/data/tech-dna";
+import { CountUp } from "@/components/ui/count-up";
+import { FROM_SKILL_ATTR, SKILL_LINK_ATTR } from "@/lib/tech-links";
 import { cn } from "@/lib/utils";
 
 /**
  * Technical DNA: the skills as one connected system.
  *
- * Server-rendered as plain, readable markup (hub, four domains, every skill).
- * On the client it becomes an explorer: hovering (fine pointer), focusing or tapping a
- * skill highlights what it was used with, and on desktop an SVG layer draws the
- * hub-to-domain wiring plus curved links for the active skill. The info panel
- * explains each selection in words, so nothing depends on the lines or on color.
+ * Server-rendered as plain, readable markup (hub, four domains, every skill). Skills that a
+ * project or role on the site uses get solid chips; skills that are only in the toolkit get
+ * dashed ones. On the client it becomes an explorer: hovering (fine pointer), focusing or
+ * tapping a skill highlights what it was used with, and on desktop an SVG layer draws the
+ * hub-to-domain wiring plus curved links for the active skill. The info panel explains each
+ * selection in words, place by place, so nothing depends on the lines or on color.
+ *
+ * Motion (all in tech-dna.css, keyed off the reveal classes and data attributes set here):
+ * - Signal ripple: the whole explorer is one reveal and each domain card is its own, so on a
+ *   phone a domain ripples as it scrolls into view. When a domain reveals, the hub lights,
+ *   then its header, group labels and chips light in reading order (`--i`), at most about
+ *   650 ms from first to last (`--dna-step`). On desktop the hub wires draw first and the
+ *   ripple runs down each column (`--j`) as its wire arrives (`--dna-order`).
+ * - Pinning blooms the chip's ring. Where no wires show (stacked layout, or touch at any
+ *   width) the connected chips pulse once in reading order (`data-pulse`, `--k`). On desktop
+ *   the curved links draw in from the active chip, each a little after the previous (`--k`).
+ * - The docked panel on phones slides up and its lines follow 40 ms apart (`data-dock-item`).
+ * Reduced motion turns all of it off in CSS, so the handlers here never need to check it,
+ * except before starting the pulse timer.
+ *
+ * Hover: a preview lasts until the pointer rests on another chip or leaves the whole graph,
+ * so the pointer can travel to the panel's links; chips crossed on the way don't replace it.
  *
  * Keyboard: the chips are one Tab stop (roving tabindex). Arrow keys move between them,
  * Enter or Space pins, Tab continues into the info panel, Escape clears. Keyboard focus
  * always outranks mouse hover. Each chip also carries a short static description, so
  * nothing has to be announced live.
+ *
+ * Skill links: a click on any `a[data-skill]` on the page (lib/tech-links.ts) scrolls that
+ * skill's chip into view, pins it and moves focus to it. Without JavaScript it jumps to #skills.
  */
 
+/** What the explorer reads. `edges` repeats each node's `connections`, so it stays on the server. */
+export type TechDnaClientGraph = Omit<TechDnaGraph, "edges">;
+
 interface TechDnaProps {
-  graph: TechDnaGraph;
+  graph: TechDnaClientGraph;
   hub: { name: string; title: string };
 }
 
-type NodeState = "idle" | "active" | "linked" | "peer" | "dim";
+type NodeState = "idle" | "active" | "linked" | "dim";
 type DomainState = "idle" | "active" | "linked" | "dim";
 type PanelMode = "rest" | "preview" | "pinned";
 
@@ -64,12 +90,36 @@ interface Geometry {
   lanes: Record<number, LaneBox>;
 }
 
+/** Where a skill was used, and which other skills were used there with it. */
+interface Usage {
+  source: DnaSource;
+  /** Names of the other skills from that source, in display order. */
+  withNames: string[];
+}
+
 const GROUP_LABEL = "Skills, use arrow keys to move";
 const DESKTOP_QUERY = "(min-width: 64rem)";
 const HOVER_QUERY = "(hover: hover) and (pointer: fine)";
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
-/** Grace period before a hover preview ends, so crossing the gap between chips doesn't flicker. */
-const HOVER_RELEASE_MS = 90;
+/** While a preview shows, the pointer has to rest this long on another chip to switch to it. */
+const HOVER_SWITCH_MS = 100;
+/** Signal ripple: one item every 50 ms, squeezed so a domain spans at most about 650 ms. */
+const RIPPLE_STEP_MS = 50;
+const RIPPLE_SPAN_MS = 650;
+/** Connected chips pulse once after a pin without wires: each bloom, the gap, and the gap's cap. */
+const PULSE_MS = 600;
+const PULSE_STAGGER_MS = 40;
+const PULSE_STAGGER_CAP_MS = 400;
+/** Panel and description copy for a skill that no project or role on the site lists. */
+const TOOLKIT_COPY = "Part of my toolkit.";
+
+type InputKind = "mouse" | "touch" | "keyboard";
+
+/** Position of a lit item in the signal ripple: within its domain (`i`) and within its lane (`j`). */
+interface RipplePosition {
+  i: number;
+  j: number;
+}
 
 const domainIcons: Record<DnaDomainId, LucideIcon> = {
   systems: Server,
@@ -90,11 +140,54 @@ function joinNames(names: string[]): string {
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
-/** Static screen reader description of a chip: where it is used and how many links it has. */
-function describeNode(node: DnaNode): string {
-  const count = node.connections.length;
-  const used = node.usedIn.length > 0 ? `Used in ${joinNames(node.usedIn)}. ` : "";
-  return `${used}${count > 0 ? `Connected to ${count} ${count === 1 ? "skill" : "skills"}.` : "Not linked to other skills."}`;
+function usageOf(node: DnaNode, graph: TechDnaClientGraph): Usage[] {
+  return node.usedIn.flatMap((name) => {
+    const source = graph.sources.find((item) => item.name === name);
+    if (!source) return [];
+    const withNames = node.connections
+      .filter((connection) => connection.sharedIn.includes(name))
+      .flatMap((connection) => graph.nodes[connection.id]?.name ?? []);
+    return [{ source, withNames }];
+  });
+}
+
+/**
+ * Static screen reader description of a chip, in the same terms as the info panel, e.g.
+ * "Used in Market Desk, with NestJS and React; and in SmartHub, with NestJS."
+ */
+function describeNode(node: DnaNode, graph: TechDnaClientGraph): string {
+  const clauses = usageOf(node, graph).map(({ source, withNames }) =>
+    withNames.length > 0 ? `${source.phrase}, with ${joinNames(withNames)}` : source.phrase,
+  );
+  const last = clauses.pop();
+  if (last === undefined) return TOOLKIT_COPY;
+  return `Used in ${clauses.length > 0 ? `${clauses.join("; in ")}; and in ${last}` : last}.`;
+}
+
+/**
+ * The panel entry likely to need the most room: a rough count of wrapped lines, then of
+ * characters. On desktop an invisible copy of it reserves the panel's height.
+ */
+function largestEntry(graph: TechDnaClientGraph): DnaNode | undefined {
+  let largest: DnaNode | undefined;
+  let largestScore = -1;
+  for (const node of Object.values(graph.nodes)) {
+    const usage = usageOf(node, graph);
+    const texts =
+      usage.length > 0
+        ? usage.flatMap(({ source, withNames }) => [
+            source.name,
+            ...(withNames.length > 0 ? [`with ${joinNames(withNames)}`] : []),
+          ])
+        : [TOOLKIT_COPY];
+    const lines = texts.reduce((total, text) => total + Math.ceil(text.length / 36), Math.ceil(node.name.length / 22));
+    const score = lines * 1000 + texts.join("").length + node.name.length;
+    if (score > largestScore) {
+      largest = node;
+      largestScore = score;
+    }
+  }
+  return largest;
 }
 
 /** Moves focus back to a chip without scrolling and without starting a focus preview. */
@@ -158,8 +251,9 @@ const LIFTS = [0, -8, 8, -16, 16, -24, 24, -32, 32, -44, 44, -56, 56];
 /**
  * Link from the active chip to a chip in another lane.
  * Leaves the facing edge and lands on the target's facing edge. Of a few vertical bows, it
- * keeps the one that passes behind the fewest other chips, so a line never seems to come
- * out of a skill it isn't connected to.
+ * keeps the one that passes behind the fewest other chips. Where one still has to pass behind
+ * a chip, that chip is slightly see-through (tech-dna.css), so the line visibly continues
+ * instead of seeming to start at a skill it isn't connected to.
  * `ceiling` is the bottom of the domain headers; links never rise into them.
  */
 function linkPath(a: Box, b: Box, laneA: number, laneB: number, obstacles: Box[], ceiling: number): string {
@@ -215,7 +309,7 @@ function arcPath(a: Box, b: Box, side: ArcSide, lane: LaneBox, edge: number, lim
   return cubicPath([x1, y1, cx, y1, cx, y2, x2, y2]);
 }
 
-/** Layout box relative to `container`, from offsets so entrance transforms don't skew it. */
+/** Layout box relative to `container`, from offsets so transforms (e.g. a pressed chip) don't skew it. */
 function boxWithin(element: HTMLElement, container: HTMLElement): Box {
   let x = element.offsetLeft;
   let y = element.offsetTop;
@@ -236,19 +330,16 @@ interface LaneLayout {
 interface DomainLayout extends DnaDomain {
   order: number;
   trackStart: number;
-  /** 2 = spans both desktop rows; 1 = shares its tracks with the info panel below it. */
+  /** 2 = spans the first two desktop rows; 1 = shares its tracks with the info panel below it. */
   rows: number;
   laneLayouts: LaneLayout[];
   nodeIds: string[];
-  /** Entrance order of each row (group labels keyed `group:<id>`, technologies by node id). */
-  rowOrder: Record<string, number>;
+  /** Signal ripple gap between items, in ms: 50, or less so the domain finishes in time. */
+  rippleStep: number;
 }
 
-/** Entrance delay for a row: after the hub and headers, a quick cascade per domain. */
-const rowDelay = (domainOrder: number, row: number) => `${240 + domainOrder * 50 + Math.min(row, 14) * 18}ms`;
-
-/** Desktop grid placement, lane membership and entrance order, derived from the data. Pure. */
-function computeLayout(graph: TechDnaGraph) {
+/** Desktop grid placement, lane membership and ripple order, derived from the data. Pure. */
+function computeLayout(graph: TechDnaClientGraph) {
   const totalTracks = graph.domains.reduce((total, domain) => total + domain.lanes.length, 0);
   // The info panel sits under the right-most domains on desktop.
   const panelSpan = Math.min(2, totalTracks);
@@ -256,6 +347,11 @@ function computeLayout(graph: TechDnaGraph) {
   const laneOf: Record<string, number> = {};
   /** Node ids per lane, top to bottom. */
   const laneNodes: Record<number, string[]> = {};
+  /** Signal ripple order of every chip (by node id) and group label (by group id). The header is 0. */
+  const ripple: { nodes: Record<string, RipplePosition>; labels: Record<string, RipplePosition> } = {
+    nodes: {},
+    labels: {},
+  };
   const domains: DomainLayout[] = [];
   let track = 0;
 
@@ -263,29 +359,26 @@ function computeLayout(graph: TechDnaGraph) {
     const trackStart = track;
     track += domain.lanes.length;
     const groupsById = new Map(domain.groups.map((group) => [group.id, group]));
-    const laneLayouts = domain.lanes.map((groupIds, offset) => {
-      const index = trackStart + offset;
+    // Group labels are rendered (and lit) only when a domain has more than one group.
+    const labelled = domain.groups.length > 1;
+    let items = 0;
+    const laneLayouts = domain.lanes.map((groupIds, position) => {
+      const index = trackStart + position;
       const groups = groupIds
         .map((id) => groupsById.get(id))
         .filter((group): group is DnaGroup => Boolean(group));
+      let j = 0;
       for (const group of groups) {
+        if (labelled) ripple.labels[group.id] = { i: items + ++j, j };
         for (const id of group.nodeIds) {
           laneOf[id] = index;
           (laneNodes[index] ??= []).push(id);
+          ripple.nodes[id] = { i: items + ++j, j };
         }
       }
+      items += j;
       return { index, groups };
     });
-
-    const multiGroup = domain.groups.length > 1;
-    const rowOrder: Record<string, number> = {};
-    let row = 0;
-    for (const lane of laneLayouts) {
-      for (const group of lane.groups) {
-        if (multiGroup) rowOrder[`group:${group.id}`] = row++;
-        for (const id of group.nodeIds) rowOrder[id] = row++;
-      }
-    }
 
     domains.push({
       ...domain,
@@ -294,7 +387,7 @@ function computeLayout(graph: TechDnaGraph) {
       rows: trackStart + domain.lanes.length > panelStart ? 1 : 2,
       laneLayouts,
       nodeIds: laneLayouts.flatMap((lane) => lane.groups.flatMap((group) => group.nodeIds)),
-      rowOrder,
+      rippleStep: Math.min(RIPPLE_STEP_MS, Math.round(RIPPLE_SPAN_MS / Math.max(1, items))),
     });
   });
 
@@ -304,19 +397,30 @@ function computeLayout(graph: TechDnaGraph) {
     .map(Number)
     .sort((a, b) => a - b);
   const firstId = domains[0]?.nodeIds[0] ?? null;
-  return { domains, totalTracks, panelStart, panelSpan, laneOf, laneNodes, lanes, nodeCount, firstId };
+  return { domains, totalTracks, panelStart, panelSpan, laneOf, laneNodes, lanes, ripple, nodeCount, firstId };
 }
+
+/** Legend rows. Display is set per row, so one can be hidden below desktop. */
+const legendClass = "flex-wrap gap-x-5 gap-y-1.5 font-mono text-xs leading-4 text-fg-subtle";
+const legendItemClass = "flex items-center gap-2";
 
 export function TechDna({ graph, hub }: TechDnaProps) {
   const graphRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const hoverTimer = useRef<number | undefined>(undefined);
+  /** Pending switch of a hover preview to another chip (see HOVER_SWITCH_MS). */
+  const switchTimer = useRef<number | undefined>(undefined);
+  /** Pending check that a tapped chip sits clear of the docked panel. */
+  const dockFrame = useRef(0);
+  /** Ends the one-time pulse of the connected chips. */
+  const pulseTimer = useRef<number | undefined>(undefined);
+  /** What pressed last: a mouse gets the desktop wires, anything else the pulse as well. */
+  const lastInput = useRef<InputKind>("mouse");
   const canHover = useRef(false);
   /** True from a keyboard focus or key press until the mouse really moves over a chip again. */
   const keyboardMode = useRef(false);
   /** Last mouse position seen over a chip, to tell real movement from content scrolling under it. */
   const lastPointer = useRef<{ x: number; y: number } | null>(null);
-  /** Set while focus is returned to a chip by script, so that focus doesn't start a preview. */
+  /** Set while focus is moved to a chip by script, so that focus doesn't start a preview. */
   const skipPreview = useRef(false);
 
   const [hoverId, setHoverId] = useState<string | null>(null);
@@ -324,25 +428,47 @@ export function TechDna({ graph, hub }: TechDnaProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   /** The chip focused or pressed last: the group's single Tab stop. */
   const [lastId, setLastId] = useState<string | null>(null);
+  /** The pinned chip whose connections are pulsing right now. */
+  const [pulseId, setPulseId] = useState<string | null>(null);
+  /** Counts pins that pulse; its parity alternates the bloom keyframes so every pin restarts them. */
+  const [pulseRun, setPulseRun] = useState(0);
   const [geometry, setGeometry] = useState<Geometry | null>(null);
 
-  /* ---------- Static layout derived from the data ---------- */
+  /* ---------- Static data derived from the graph ---------- */
   const layout = useMemo(() => computeLayout(graph), [graph]);
+  const descriptions = useMemo(
+    () => Object.fromEntries(Object.values(graph.nodes).map((node) => [node.id, describeNode(node, graph)])),
+    [graph],
+  );
+  const largest = useMemo(() => largestEntry(graph), [graph]);
+  const usedCount = useMemo(() => Object.values(graph.nodes).filter((node) => node.tier === "used").length, [graph]);
+  /** Lower-cased skill name or alias ("sql server") -> node id, for skill links. */
+  const skillIds = useMemo(() => {
+    const ids = new Map(Object.entries(graph.aliases));
+    for (const node of Object.values(graph.nodes)) ids.set(node.name.toLowerCase(), node.id);
+    return ids;
+  }, [graph]);
 
   /* ---------- Interaction state ---------- */
   // Keyboard focus outranks hover, so the panel always describes the focused chip.
   const activeId = focusId ?? hoverId ?? selectedId;
   const activeNode: DnaNode | undefined = activeId ? graph.nodes[activeId] : undefined;
   const mode: PanelMode = !activeNode ? "rest" : activeId === selectedId ? "pinned" : "preview";
-  const linked = new Map(activeNode?.connections.map((connection) => [connection.id, connection]) ?? []);
+  /** Connected node id -> its place in the active skill's connections (reading order). */
+  const linked = new Map(activeNode?.connections.map((connection, k) => [connection.id, k]) ?? []);
   const selectedNode: DnaNode | undefined = selectedId ? graph.nodes[selectedId] : undefined;
   const tabStopId = lastId ?? selectedId ?? layout.firstId;
+  /** Chips pulsing for the pinned skill, in reading order. Empty once the pin changes or the timer ends. */
+  const pulsing = new Map(
+    pulseId !== null && pulseId === selectedId
+      ? (graph.nodes[pulseId]?.connections.map((connection, k) => [connection.id, k]) ?? [])
+      : [],
+  );
 
   const nodeState = (id: string): NodeState => {
     if (!activeNode) return "idle";
     if (id === activeNode.id) return "active";
-    if (linked.has(id)) return "linked";
-    return graph.nodes[id]?.domain === activeNode.domain ? "peer" : "dim";
+    return linked.has(id) ? "linked" : "dim";
   };
 
   const domainState = (domain: DomainLayout): DomainState => {
@@ -375,8 +501,14 @@ export function TechDna({ graph, hub }: TechDnaProps) {
   }, []);
 
   useEffect(() => {
-    const timer = hoverTimer;
-    return () => window.clearTimeout(timer.current);
+    const timer = switchTimer;
+    const pulse = pulseTimer;
+    const frame = dockFrame;
+    return () => {
+      window.clearTimeout(timer.current);
+      window.clearTimeout(pulse.current);
+      cancelAnimationFrame(frame.current);
+    };
   }, []);
 
   /* ---------- Desktop geometry for the SVG wiring ---------- */
@@ -459,7 +591,7 @@ export function TechDna({ graph, hub }: TechDnaProps) {
       if (event.key !== "Escape" || event.defaultPrevented) return;
       // Leave Escape to the command palette, the mobile menu and form fields. Both overlays
       // are still open (in the DOM) while their own Escape handling runs.
-      if (document.querySelector("dialog[open], #mobile-menu")) return;
+      if (document.querySelector("dialog[open], #mobile-menu[data-open]")) return;
       const target = event.target instanceof Element ? event.target : null;
       if (target?.closest('dialog, [role="dialog"], [aria-modal="true"], input, textarea, select')) return;
       const shown = focusId ?? selectedId;
@@ -472,6 +604,64 @@ export function TechDna({ graph, hub }: TechDnaProps) {
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [hasSelectionOrFocus, focusId, selectedId]);
+
+  /* ---------- Connected chips pulse once after a pin that has no wires to show it ---------- */
+  /**
+   * Below the desktop width the SVG wiring is hidden, and a finger covers the chip it taps, so
+   * the connected chips bloom once in reading order instead. On desktop a mouse pin draws the
+   * curved links, so only touch (and keyboard) pins pulse there too.
+   */
+  const pulseConnections = useCallback(
+    (id: string) => {
+      window.clearTimeout(pulseTimer.current);
+      if (window.matchMedia(REDUCED_MOTION_QUERY).matches) return;
+      if (window.matchMedia(DESKTOP_QUERY).matches && lastInput.current === "mouse") return;
+      const count = graph.nodes[id]?.connections.length ?? 0;
+      if (count === 0) return;
+      setPulseId(id);
+      setPulseRun((run) => run + 1);
+      const stagger = Math.min((count - 1) * PULSE_STAGGER_MS, PULSE_STAGGER_CAP_MS);
+      pulseTimer.current = window.setTimeout(() => setPulseId(null), PULSE_MS + stagger + 50);
+    },
+    [graph],
+  );
+
+  /* ---------- Skill links anywhere on the page pin their skill ---------- */
+  useEffect(() => {
+    const onClick = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0) return;
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const link = event.target instanceof Element ? event.target.closest(`a[${SKILL_LINK_ATTR}]`) : null;
+      const term = link?.getAttribute(SKILL_LINK_ATTR)?.trim().toLowerCase();
+      const id = term ? skillIds.get(term) : undefined;
+      // Not a skill on the map: the link only jumps to #skills.
+      if (!id) return;
+      // A skill on the map: take over the jump and bring its chip into view (a jump to the
+      // section top would leave the chip and the panel below the fold), then pin it and focus
+      // the chip in place. Mark the input as keyboard-like so the hover that the scroll
+      // produces under a resting pointer can't replace the pin; the next real move ends that.
+      event.preventDefault();
+      // Modern browsers fire click as a PointerEvent; older ones fall back to the pointer capability.
+      const pointerType = (event as Partial<globalThis.PointerEvent>).pointerType;
+      lastInput.current =
+        pointerType === "mouse" || (pointerType === undefined && canHover.current) ? "mouse" : "touch";
+      if (window.location.hash !== "#skills") window.history.pushState(null, "", "#skills");
+      const reduce = window.matchMedia(REDUCED_MOTION_QUERY).matches;
+      document.getElementById(nodeDomId(id))?.scrollIntoView({ block: "center", behavior: reduce ? "auto" : "smooth" });
+      requestAnimationFrame(() => {
+        window.clearTimeout(switchTimer.current);
+        keyboardMode.current = true;
+        setHoverId(null);
+        setFocusId(null);
+        setSelectedId(id);
+        setLastId(id);
+        pulseConnections(id);
+        returnFocus(id, skipPreview);
+      });
+    };
+    document.addEventListener("click", onClick);
+    return () => document.removeEventListener("click", onClick);
+  }, [skillIds, pulseConnections]);
 
   /* ---------- Phones and tablets: reserve the docked panel's height as scroll padding ---------- */
   // While a selection is pinned the panel docks at the bottom of the viewport (see tech-dna.css).
@@ -500,12 +690,15 @@ export function TechDna({ graph, hub }: TechDnaProps) {
     };
   }, [pinned]);
 
-  /* ---------- Phones and tablets: keep the tapped chip clear of the docked panel ---------- */
-  useEffect(() => {
-    if (!selectedId || window.matchMedia(DESKTOP_QUERY).matches) return;
-    const frame = requestAnimationFrame(() => {
+  /* ---------- Node handlers ---------- */
+  /** Phones and tablets: once a tap has pinned a chip, scroll it clear of the docked panel. */
+  const keepClearOfDock = (id: string) => {
+    cancelAnimationFrame(dockFrame.current);
+    // Next frame: the pinned render has committed and the panel has docked.
+    dockFrame.current = requestAnimationFrame(() => {
+      if (window.matchMedia(DESKTOP_QUERY).matches) return;
       const panel = panelRef.current;
-      const button = document.getElementById(nodeDomId(selectedId));
+      const button = document.getElementById(nodeDomId(id));
       if (!panel || getComputedStyle(panel).position !== "sticky" || !button) return;
       // Compare with where the panel docks, not where it is now: near the top of the cards the
       // sticky panel is still clamped to them and moves as the page scrolls.
@@ -517,23 +710,30 @@ export function TechDna({ graph, hub }: TechDnaProps) {
         window.scrollBy({ top: overlap, behavior: reduce ? "instant" : "smooth" });
       }
     });
-    return () => cancelAnimationFrame(frame);
-  }, [selectedId]);
+  };
 
-  /* ---------- Node handlers ---------- */
   /** Keyboard use ends any hover preview; hover resumes only once the mouse moves again. */
   const enterKeyboardMode = () => {
     keyboardMode.current = true;
-    window.clearTimeout(hoverTimer.current);
+    window.clearTimeout(switchTimer.current);
     setHoverId(null);
+  };
+
+  /** Previews a chip: at once when nothing is previewed, otherwise once the pointer rests on it. */
+  const preview = (id: string) => {
+    window.clearTimeout(switchTimer.current);
+    if (hoverId === null || hoverId === id) {
+      setHoverId(id);
+      return;
+    }
+    switchTimer.current = window.setTimeout(() => setHoverId(id), HOVER_SWITCH_MS);
   };
 
   const onPointerEnter = (event: PointerEvent<HTMLButtonElement>, id: string) => {
     if (event.pointerType !== "mouse" || !canHover.current) return;
     lastPointer.current = { x: event.clientX, y: event.clientY };
     if (keyboardMode.current) return;
-    window.clearTimeout(hoverTimer.current);
-    setHoverId(id);
+    preview(id);
   };
 
   const onPointerMove = (event: PointerEvent<HTMLButtonElement>, id: string) => {
@@ -544,19 +744,24 @@ export function TechDna({ graph, hub }: TechDnaProps) {
     lastPointer.current = { x: event.clientX, y: event.clientY };
     if (!keyboardMode.current) return;
     keyboardMode.current = false;
-    window.clearTimeout(hoverTimer.current);
-    setHoverId(id);
+    preview(id);
   };
 
+  /** Only passing over a chip: the current preview stays. */
   const onPointerLeave = (event: PointerEvent<HTMLButtonElement>) => {
+    if (event.pointerType === "mouse") window.clearTimeout(switchTimer.current);
+  };
+
+  /** The preview ends when the pointer leaves the whole graph, info panel included. */
+  const onGraphPointerLeave = (event: PointerEvent<HTMLDivElement>) => {
     if (event.pointerType !== "mouse") return;
-    window.clearTimeout(hoverTimer.current);
-    hoverTimer.current = window.setTimeout(() => setHoverId(null), HOVER_RELEASE_MS);
+    window.clearTimeout(switchTimer.current);
+    setHoverId(null);
   };
 
   const onFocus = (event: FocusEvent<HTMLButtonElement>, id: string) => {
     setLastId(id);
-    // Focus returned by script after a clear: no preview.
+    // Focus moved by script (after a clear, or by a skill link): no preview.
     if (skipPreview.current) return;
     // Keyboard focus previews a node. A mouse click focuses the button too, but that is handled by click.
     let keyboard = true;
@@ -587,9 +792,25 @@ export function TechDna({ graph, hub }: TechDnaProps) {
     setFocusId(null);
   };
 
+  /** Remembers what kind of input is pressing, before the click it produces. */
+  const onPointerDown = (event: PointerEvent<HTMLButtonElement>) => {
+    lastInput.current = event.pointerType === "mouse" ? "mouse" : "touch";
+  };
+
   const toggle = (id: string) => {
+    // A click settles a hover switch that is still waiting, so the panel shows the clicked chip.
+    window.clearTimeout(switchTimer.current);
+    if (hoverId !== null) setHoverId(id);
     setLastId(id);
-    setSelectedId((current) => (current === id ? null : id));
+    const pinning = selectedId !== id;
+    setSelectedId(pinning ? id : null);
+    if (pinning) {
+      keepClearOfDock(id);
+      pulseConnections(id);
+    } else {
+      window.clearTimeout(pulseTimer.current);
+      setPulseId(null);
+    }
   };
 
   /** Desktop: the chip in the next lane (column) whose center is closest to this chip's. */
@@ -619,6 +840,7 @@ export function TechDna({ graph, hub }: TechDnaProps) {
 
   const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>, id: string) => {
     enterKeyboardMode();
+    lastInput.current = "keyboard";
     const node = graph.nodes[id];
     const domainIndex = layout.domains.findIndex((domain) => domain.id === node?.domain);
     const domain = layout.domains[domainIndex];
@@ -685,7 +907,7 @@ export function TechDna({ graph, hub }: TechDnaProps) {
     : 0;
   const crossLinks =
     geometry && activeNode
-      ? activeNode.connections.flatMap((connection) => {
+      ? activeNode.connections.flatMap((connection, k) => {
           const from = geometry.nodes[activeNode.id];
           const to = geometry.nodes[connection.id];
           const laneA = layout.laneOf[activeNode.id];
@@ -697,7 +919,7 @@ export function TechDna({ graph, hub }: TechDnaProps) {
             const obstacles = Object.entries(geometry.nodes)
               .filter(([id]) => id !== activeNode.id && id !== connection.id)
               .map(([, box]) => box);
-            return [{ key, d: linkPath(from, to, laneA, laneB, obstacles, headsBottom) }];
+            return [{ key, k, d: linkPath(from, to, laneA, laneB, obstacles, headsBottom) }];
           }
 
           const lane = geometry.lanes[laneA];
@@ -716,16 +938,16 @@ export function TechDna({ graph, hub }: TechDnaProps) {
               : Math.max(...spanned.map((box) => box.x + box.w));
           const nextLane = geometry.lanes[layout.lanes[layout.lanes.indexOf(laneA) + 1] ?? -1];
           const limit = side === "left" ? ARC_MARGIN : (nextLane?.spine ?? geometry.width) - ARC_MARGIN;
-          return [{ key, d: arcPath(from, to, side, lane, edge, limit) }];
+          return [{ key, k, d: arcPath(from, to, side, lane, edge, limit) }];
         })
       : [];
 
   /* ---------- Copy derived from the data ---------- */
   const projectNames = graph.sources.filter((source) => source.kind === "project").map((source) => source.name);
-  const experienceNames = graph.sources.filter((source) => source.kind === "experience").map((source) => source.name);
+  const rolePhrases = graph.sources.filter((source) => source.kind === "role").map((source) => source.phrase);
   const sourcesSentence = joinNames([
     ...(projectNames.length > 0 ? [`my projects (${joinNames(projectNames)})`] : []),
-    ...experienceNames.map((name) => `my ${name}`),
+    ...rolePhrases,
   ]);
 
   const gridStyle = {
@@ -736,7 +958,7 @@ export function TechDna({ graph, hub }: TechDnaProps) {
 
   return (
     <div className="dna" data-reveal="">
-      <div ref={graphRef} className="dna-graph relative">
+      <div ref={graphRef} className="dna-graph relative" onPointerLeave={onGraphPointerLeave}>
         {/* Blueprint dot grid (desktop) */}
         <div aria-hidden="true" className="dna-dots pointer-events-none absolute inset-0 hidden rounded-[inherit] lg:block" />
 
@@ -755,11 +977,17 @@ export function TechDna({ graph, hub }: TechDnaProps) {
               pathLength={1}
               className="dna-wire"
               data-state={link.state}
-              style={{ "--dna-delay": `${140 + link.order * 70}ms` } as CSSProperties}
+              style={{ "--dna-delay": `${80 + link.order * 60}ms` } as CSSProperties}
             />
           ))}
           {crossLinks.map((link) => (
-            <path key={link.key} d={link.d} pathLength={1} className="dna-link" />
+            <path
+              key={link.key}
+              d={link.d}
+              pathLength={1}
+              className="dna-link"
+              style={{ "--k": link.k } as CSSProperties}
+            />
           ))}
         </svg>
 
@@ -767,21 +995,22 @@ export function TechDna({ graph, hub }: TechDnaProps) {
         <div className="relative z-[1] mb-3 lg:mb-14 lg:flex lg:justify-center">
           <div
             data-dna-hub=""
-            className="dna-stage dna-hub relative flex flex-wrap items-center gap-x-3.5 gap-y-2 rounded-2xl border border-line bg-bg-raised/60 p-4 lg:w-fit lg:flex-nowrap lg:rounded-xl lg:border-line-strong lg:bg-surface lg:py-3 lg:pr-5 lg:pl-3.5"
-            style={{ "--dna-delay": "0ms" } as CSSProperties}
+            className="dna-hub relative flex flex-wrap items-center gap-x-3.5 gap-y-2 rounded-2xl border border-line bg-bg-raised/60 p-4 lg:w-fit lg:flex-nowrap lg:rounded-xl lg:border-line-strong lg:bg-surface lg:py-3 lg:pr-5 lg:pl-3.5"
           >
             <span className="grid size-10 shrink-0 place-items-center rounded-lg border border-line bg-tint/[0.04] text-fg-muted">
-              <UserRound aria-hidden="true" focusable="false" className="size-[1.125rem]" strokeWidth={1.6} />
+              <UserRound aria-hidden="true" focusable="false" className="size-[1.125rem]" strokeWidth={1.75} />
             </span>
             <div className="min-w-0">
-              <p className="font-mono text-[0.6875rem] leading-4 tracking-[0.08em] text-fg-subtle uppercase">
-                {hub.name}
-              </p>
+              <p className="label-mono">{hub.name}</p>
               <p className="font-display text-lg leading-tight font-semibold tracking-[-0.01em] text-fg">{hub.title}</p>
             </div>
-            <p className="flex w-full gap-4 border-t border-line pt-2.5 font-mono text-[0.6875rem] leading-4 text-fg-subtle sm:ml-auto sm:block sm:w-auto sm:border-0 sm:pt-0 sm:text-right lg:ml-2 lg:border-l lg:pl-4">
-              <span className="block">{layout.domains.length} domains</span>
-              <span className="block">{layout.nodeCount} skills</span>
+            <p className="flex w-full flex-wrap gap-x-4 gap-y-1 border-t border-line pt-2.5 font-mono text-xs leading-4 text-fg-subtle sm:ml-auto sm:block sm:w-auto sm:border-0 sm:pt-0 sm:text-right lg:ml-2 lg:border-l lg:pl-4">
+              <span className="block">
+                <CountUp value={layout.nodeCount} /> skills
+              </span>
+              <span className="block">
+                <CountUp value={usedCount} /> used in projects or roles
+              </span>
             </p>
           </div>
         </div>
@@ -799,6 +1028,9 @@ export function TechDna({ graph, hub }: TechDnaProps) {
                 <div
                   key={domain.id}
                   className="dna-domain"
+                  data-reveal=""
+                  // Desktop: the columns enter with the explorer, in step with the hub wires.
+                  data-reveal-with="(min-width: 64rem)"
                   data-state={domainState(domain)}
                   style={
                     {
@@ -806,25 +1038,27 @@ export function TechDna({ graph, hub }: TechDnaProps) {
                       "--dna-span": domain.lanes.length,
                       "--dna-rows": domain.rows,
                       "--dna-lanes": domain.lanes.length,
+                      "--dna-order": domain.order,
+                      "--dna-step": `${domain.rippleStep}ms`,
                     } as CSSProperties
                   }
                 >
                   <div
                     data-dna-head={domain.id}
-                    className="dna-stage dna-head relative flex items-center gap-2.5"
-                    style={{ "--dna-delay": `${120 + domain.order * 60}ms` } as CSSProperties}
+                    className="dna-head relative flex items-center gap-2.5"
+                    style={{ "--i": 0 } as CSSProperties}
                   >
                     <span className="dna-head-icon grid size-7 shrink-0 place-items-center rounded-md border border-line bg-tint/[0.04] text-fg-muted">
                       <DomainIcon aria-hidden="true" focusable="false" className="size-3.5" strokeWidth={1.75} />
                     </span>
                     <h3
                       id={headingId}
-                      className="font-mono text-xs leading-4 font-medium tracking-[0.12em] text-fg uppercase"
+                      className="font-mono text-xs leading-4 font-medium tracking-[0.08em] text-fg uppercase"
                     >
                       {domain.label}
                     </h3>
-                    <span aria-hidden="true" className="ml-auto font-mono text-[0.6875rem] text-fg-subtle tabular-nums">
-                      {String(domain.size).padStart(2, "0")}
+                    <span aria-hidden="true" className="ml-auto font-mono text-xs text-fg-subtle tabular-nums">
+                      <CountUp value={domain.size} />
                     </span>
                   </div>
 
@@ -838,12 +1072,8 @@ export function TechDna({ graph, hub }: TechDnaProps) {
                               {multiGroup ? (
                                 <h4
                                   id={groupHeadingId(group.id)}
-                                  className="dna-stage dna-row dna-row-label font-mono text-[0.6875rem] leading-4 tracking-[0.08em] text-fg-subtle uppercase"
-                                  style={
-                                    {
-                                      "--dna-delay": rowDelay(domain.order, domain.rowOrder[`group:${group.id}`] ?? 0),
-                                    } as CSSProperties
-                                  }
+                                  className="dna-row dna-row-label label-mono"
+                                  style={rippleStyle(layout.ripple.labels[group.id])}
                                 >
                                   {group.label}
                                 </h4>
@@ -856,18 +1086,18 @@ export function TechDna({ graph, hub }: TechDnaProps) {
                                   const node = graph.nodes[id];
                                   if (!node) return null;
                                   const state = nodeState(id);
+                                  // Order among the connected chips: the link draw, its port, and the pulse follow it.
+                                  const k = pulsing.get(id) ?? linked.get(id);
                                   return (
                                     <li
                                       key={id}
-                                      className="dna-stage dna-row"
+                                      className="dna-row"
                                       data-state={state}
+                                      data-tier={node.tier}
                                       data-last={id === laneLastId ? "" : undefined}
                                       data-port={state === "linked" ? portSide(id) : undefined}
-                                      style={
-                                        {
-                                          "--dna-delay": rowDelay(domain.order, domain.rowOrder[id] ?? 0),
-                                        } as CSSProperties
-                                      }
+                                      data-pulse={pulsing.has(id) ? (pulseRun % 2 ? "b" : "a") : undefined}
+                                      style={rippleStyle(layout.ripple.nodes[id], k)}
                                     >
                                       <button
                                         type="button"
@@ -879,6 +1109,7 @@ export function TechDna({ graph, hub }: TechDnaProps) {
                                         aria-pressed={selectedId === id}
                                         aria-describedby={nodeDescriptionId(id)}
                                         onClick={() => toggle(id)}
+                                        onPointerDown={onPointerDown}
                                         onPointerEnter={(event) => onPointerEnter(event, id)}
                                         onPointerMove={(event) => onPointerMove(event, id)}
                                         onPointerLeave={onPointerLeave}
@@ -891,7 +1122,7 @@ export function TechDna({ graph, hub }: TechDnaProps) {
                                       </button>
                                       {/* Static description (server-rendered); hidden, but still read via aria-describedby. */}
                                       <span id={nodeDescriptionId(id)} hidden>
-                                        {describeNode(node)}
+                                        {descriptions[id]}
                                       </span>
                                     </li>
                                   );
@@ -911,16 +1142,17 @@ export function TechDna({ graph, hub }: TechDnaProps) {
           {/* Info panel: words for everything the highlights and lines show. */}
           <div
             ref={panelRef}
-            className="dna-stage dna-panel relative rounded-2xl border border-line-strong bg-surface p-4 sm:p-5"
+            role="region"
+            aria-label="Skill details"
+            className="dna-panel relative rounded-2xl border border-line-strong bg-surface p-4 sm:p-5"
             data-mode={mode}
             data-pinned={selectedNode ? "" : undefined}
             onFocus={onPanelFocus}
             onBlur={onPanelBlur}
-            style={{ "--dna-delay": "420ms" } as CSSProperties}
           >
             {/* Desktop header: what the panel is showing and how to change it. */}
             <div className="hidden min-h-8 items-center justify-between gap-3 border-b border-line pb-3 lg:flex">
-              <p aria-hidden="true" className="eyebrow flex items-center gap-2">
+              <p aria-hidden="true" className="label-mono flex items-center gap-2">
                 <span
                   className={cn(
                     "size-1.5 rounded-full transition-colors duration-200",
@@ -931,7 +1163,7 @@ export function TechDna({ graph, hub }: TechDnaProps) {
               </p>
               <div className="flex items-center gap-3">
                 {mode === "preview" ? (
-                  <p aria-hidden="true" className="font-mono text-[0.6875rem] text-fg-subtle">
+                  <p aria-hidden="true" className="font-mono text-xs text-fg-subtle">
                     {activeId === hoverId ? (
                       "Click to pin"
                     ) : (
@@ -941,7 +1173,7 @@ export function TechDna({ graph, hub }: TechDnaProps) {
                     )}
                   </p>
                 ) : mode === "rest" ? (
-                  <p aria-hidden="true" className="font-mono text-[0.6875rem] text-fg-subtle">
+                  <p aria-hidden="true" className="font-mono text-xs text-fg-subtle">
                     {graph.sources.length} {graph.sources.length === 1 ? "source" : "sources"}
                   </p>
                 ) : null}
@@ -950,7 +1182,7 @@ export function TechDna({ graph, hub }: TechDnaProps) {
                     type="button"
                     onClick={clearSelection}
                     aria-label={`Clear selection: ${selectedNode.name}`}
-                    className="dna-clear inline-flex h-7 items-center gap-1.5 rounded-md border border-line px-2 font-mono text-[0.6875rem] text-fg-muted transition-colors hover:border-line-strong hover:text-fg"
+                    className="dna-clear inline-flex h-7 items-center gap-1.5 rounded-md border border-line px-2 font-mono text-xs text-fg-muted hover:border-line-strong hover:text-fg focus-visible:border-line-strong focus-visible:text-fg"
                   >
                     <X aria-hidden="true" focusable="false" className="size-3.5" />
                     Clear
@@ -965,67 +1197,88 @@ export function TechDna({ graph, hub }: TechDnaProps) {
                 type="button"
                 onClick={clearSelection}
                 aria-label={`Clear selection: ${selectedNode.name}`}
-                className="absolute top-1.5 right-1.5 grid size-11 place-items-center rounded-lg text-fg-muted transition-colors hover:bg-tint/[0.06] hover:text-fg lg:hidden"
+                className="dna-close absolute top-1.5 right-1.5 grid size-11 place-items-center rounded-lg text-fg-muted hover:bg-tint/[0.06] hover:text-fg focus-visible:bg-tint/[0.06] focus-visible:text-fg lg:hidden"
               >
                 <X aria-hidden="true" focusable="false" className="size-4" />
               </button>
             ) : null}
 
-            <div className="lg:pt-4">
-              {activeNode ? (
-                <NodeDetails node={activeNode} graph={graph} />
-              ) : (
-                <div>
-                  <p className="dna-js-only text-[0.9375rem] leading-relaxed text-fg">
-                    Hover, focus or tap a skill to see where it connects.
-                  </p>
-                  {sourcesSentence ? (
-                    <p className="mt-2 text-sm leading-relaxed text-fg-muted">
-                      Connections show skills used together in {sourcesSentence}.
-                    </p>
-                  ) : null}
-                  <ul
-                    aria-hidden="true"
-                    className="dna-js-only mt-4 grid grid-cols-2 gap-x-4 gap-y-2.5 font-mono text-[0.6875rem] leading-4 text-fg-subtle"
-                  >
-                    <li className="flex items-center gap-2">
-                      <span className="dna-key" data-key="active" />
-                      Selected
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <span className="dna-key" data-key="linked" />
-                      Connected
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <span className="dna-key" />
-                      Same domain
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <span className="dna-key" data-key="dim" />
-                      Not linked
-                    </li>
-                    <li className="hidden items-center gap-2 lg:flex">
-                      <span className="dna-key-line" />
-                      Used together
-                    </li>
-                  </ul>
-                  <p
-                    aria-hidden="true"
-                    className="dna-js-only mt-4 hidden flex-wrap items-center gap-x-3 gap-y-1.5 font-mono text-[0.6875rem] leading-5 text-fg-subtle lg:flex"
-                  >
-                    <span>
-                      <kbd className="dna-kbd">↑</kbd> <kbd className="dna-kbd">↓</kbd> within domain
-                    </span>
-                    <span>
-                      <kbd className="dna-kbd">←</kbd> <kbd className="dna-kbd">→</kbd> next column
-                    </span>
-                    <span>
-                      <kbd className="dna-kbd">Esc</kbd> clears
-                    </span>
-                  </p>
+            <div className="dna-panel-body lg:pt-4">
+              {/* Desktop: an invisible copy of the largest entry shares the cell with the live one,
+                  so the panel always fits it and changing the skill never moves the page. */}
+              {largest ? (
+                <div aria-hidden="true" inert className="dna-sizer">
+                  <NodeDetails node={largest} graph={graph} />
                 </div>
-              )}
+              ) : null}
+              <div className="min-w-0">
+                {activeNode ? (
+                  // Keyed, so a new skill remounts the entry and the docked panel's lines enter again.
+                  <NodeDetails key={activeNode.id} node={activeNode} graph={graph} />
+                ) : (
+                  <div>
+                    <p className="dna-js-only hidden text-[0.9375rem] leading-relaxed text-fg lg:block">
+                      Hover, focus or tap a skill to see where it was used.
+                    </p>
+                    {sourcesSentence ? (
+                      <p className="text-sm leading-relaxed text-fg-muted lg:mt-2">
+                        Connections show skills used together in {sourcesSentence}.
+                      </p>
+                    ) : null}
+                  </div>
+                )}
+              </div>
             </div>
+          </div>
+
+          {/* Key and hints. Phones and tablets: above the domains. Desktop: under the tall columns. */}
+          <div className="dna-guide">
+            <p className="dna-js-only text-sm leading-snug text-fg-muted lg:hidden">
+              <span className="pointer-fine:hidden">Tap</span>
+              <span className="hidden pointer-fine:inline">Click</span> a skill to see where it was used.
+            </p>
+            <ul aria-hidden="true" className={cn("flex", legendClass)}>
+              <li className={legendItemClass}>
+                <span className="dna-key" />
+                Used in my projects or roles
+              </li>
+              <li className={legendItemClass}>
+                <span className="dna-key" data-key="toolkit" />
+                Also in my toolkit
+              </li>
+            </ul>
+            <ul aria-hidden="true" className={cn("dna-js-only hidden lg:flex", legendClass)}>
+              <li className={legendItemClass}>
+                <span className="dna-key" data-key="active" />
+                Selected
+              </li>
+              <li className={legendItemClass}>
+                <span className="dna-key" data-key="linked" />
+                Connected
+              </li>
+              <li className={legendItemClass}>
+                <span className="dna-key" data-key="dim" />
+                Not linked
+              </li>
+              <li className={legendItemClass}>
+                <span className="dna-key-line" />
+                Used together
+              </li>
+            </ul>
+            <p
+              aria-hidden="true"
+              className="dna-js-only hidden flex-wrap items-center gap-x-4 gap-y-1.5 font-mono text-xs leading-5 text-fg-subtle lg:pointer-fine:flex"
+            >
+              <span>
+                <kbd className="dna-kbd">↑</kbd> <kbd className="dna-kbd">↓</kbd> within domain
+              </span>
+              <span>
+                <kbd className="dna-kbd">←</kbd> <kbd className="dna-kbd">→</kbd> next column
+              </span>
+              <span>
+                <kbd className="dna-kbd">Esc</kbd> clears
+              </span>
+            </p>
           </div>
         </div>
       </div>
@@ -1033,20 +1286,28 @@ export function TechDna({ graph, hub }: TechDnaProps) {
   );
 }
 
-/** Details for the active skill. Facts only: names, groups, sources and shared sources. */
-function NodeDetails({ node, graph }: { node: DnaNode; graph: TechDnaGraph }) {
+/** Inline ripple order for a chip or group label, plus its place among the connected chips. */
+function rippleStyle(position: RipplePosition | undefined, k?: number): CSSProperties {
+  return {
+    "--i": position?.i ?? 0,
+    "--j": position?.j ?? 0,
+    ...(k !== undefined ? { "--k": k } : {}),
+  } as CSSProperties;
+}
+
+/** A line of the info panel that enters in sequence (`--i`) when the panel docks on a phone. */
+function dockItem(i: number) {
+  return { "data-dock-item": "", style: { "--i": i } as CSSProperties };
+}
+
+/** Details for the active skill. Facts only: its group, and each place it was used with what. */
+function NodeDetails({ node, graph }: { node: DnaNode; graph: TechDnaClientGraph }) {
   const domain = graph.domains.find((item) => item.id === node.domain);
-  const sources = node.usedIn
-    .map((name) => graph.sources.find((source) => source.name === name))
-    .filter((source): source is NonNullable<typeof source> => Boolean(source));
-  const connections = node.connections
-    .map((connection) => graph.nodes[connection.id])
-    .filter((item): item is DnaNode => Boolean(item));
-  const peers = (domain?.size ?? 1) - 1;
+  const usage = usageOf(node, graph);
 
   return (
     <div>
-      <p className="pr-10 font-mono text-[0.6875rem] leading-4 tracking-[0.08em] text-fg-subtle uppercase lg:pr-0">
+      <p {...dockItem(0)} className="label-mono pr-10 lg:pr-0">
         {domain && domain.groups.length > 1 ? (
           <>
             {domain.label}
@@ -1056,53 +1317,41 @@ function NodeDetails({ node, graph }: { node: DnaNode; graph: TechDnaGraph }) {
         ) : null}
         {node.groupLabel}
       </p>
-      <p className="mt-1 pr-10 font-display text-[1.375rem] leading-tight font-semibold tracking-[-0.02em] text-fg lg:pr-0 lg:text-2xl">
+      <p
+        {...dockItem(1)}
+        className="mt-1 pr-10 font-display text-[1.375rem] leading-tight font-semibold tracking-[-0.02em] text-fg lg:pr-0 lg:text-2xl"
+      >
         {node.name}
       </p>
 
-      <dl className="mt-3 grid gap-3 lg:mt-4 lg:gap-4">
-        {sources.length > 0 ? (
-          <div>
-            <dt className="eyebrow">Used in</dt>
-            <dd className="mt-1 lg:mt-2">
-              <ul className="dna-sources">
-                {sources.map((source) => (
-                  <li key={source.name}>
-                    <a href={source.href} className="dna-source">
-                      <span>{source.name}</span>
-                      <span className="dna-source-kind">{source.kind === "project" ? "Project" : "Experience"}</span>
-                      <ArrowDownRight aria-hidden="true" focusable="false" className="dna-source-icon" />
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </dd>
-          </div>
-        ) : null}
-        <div>
-          <dt className="eyebrow">
-            Connected to
-            {connections.length > 0 ? <span className="text-fg-subtle"> ({connections.length})</span> : null}
+      {usage.length > 0 ? (
+        <dl className="mt-3 lg:mt-4">
+          <dt {...dockItem(2)} className="label-mono">
+            Used in
           </dt>
           <dd className="mt-1 lg:mt-2">
-            {connections.length > 0 ? (
-              <ul className="dna-tags">
-                {connections.map((item) => (
-                  <li key={item.id} className="dna-tag">
-                    {item.name}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-sm leading-relaxed text-fg-muted">
-                {peers > 0
-                  ? `Grouped with the other ${peers} ${domain ? `${domain.label} ` : ""}skills.`
-                  : "Not linked to other skills."}
-              </p>
-            )}
+            <ul className="dna-sources">
+              {usage.map(({ source, withNames }, index) => (
+                <li key={source.name} {...dockItem(3 + index)}>
+                  <a
+                    href={source.href}
+                    className="dna-source"
+                    {...(source.kind === "project" ? { [FROM_SKILL_ATTR]: node.name } : {})}
+                  >
+                    <span>{source.name}</span>
+                    <ArrowRight aria-hidden="true" focusable="false" className="dna-source-icon" />
+                  </a>
+                  {withNames.length > 0 ? <span className="dna-with"> with {joinNames(withNames)}</span> : null}
+                </li>
+              ))}
+            </ul>
           </dd>
-        </div>
-      </dl>
+        </dl>
+      ) : (
+        <p {...dockItem(2)} className="mt-3 text-sm leading-relaxed text-fg-muted lg:mt-4">
+          {TOOLKIT_COPY}
+        </p>
+      )}
     </div>
   );
 }
