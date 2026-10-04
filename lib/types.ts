@@ -26,13 +26,14 @@ export interface Profile {
     since: string;
   };
   /**
-   * Hero status card + terminal "status" command. Keep every value factual.
-   * `status` is shown next to a live dot, e.g. "Working at SmartSource Consulting SAL".
-   * Only change it to something like "Open to opportunities" if that is true.
+   * Hero status bar, terminal `status` command and social preview. Keep every value factual.
+   * `status` states the current job, e.g. "Working at SmartSource Consulting SAL".
+   * `availability` is optional and shown only when set; the green "live" dot belongs to it,
+   * so green always means "available". Remove it when it stops being true.
    */
   statusCard: {
     status: string;
-    focus: string[];
+    availability?: string;
     stack: string[];
   };
   contact: {
@@ -70,12 +71,25 @@ export interface ExperienceItem {
   summary: string;
   highlights: string[];
   tags: string[];
+  /** Ids of projects (data/projects.ts) built in this role. Rendered as links. */
+  projects?: string[];
 }
 
 export interface ArchitectureNode {
   label: string;
   detail: string;
   icon: IconName;
+  /**
+   * What this part does in this project, shown when the node is hovered, focused or tapped.
+   * Only facts: what follows from the stack and the diagram, or what you confirmed.
+   */
+  description?: string;
+}
+
+/** A technical decision and the reason for it, in your words. */
+export interface ProjectDecision {
+  title: string;
+  detail: string;
 }
 
 export interface ProjectLink {
@@ -88,21 +102,30 @@ export interface Project {
   id: string;
   index: string;
   title: string;
+  /** Optional shorter name for tight spots (e.g. the hero status bar). */
+  shortTitle?: string;
   category: string;
-  context: string;
+  /** Where or for what it was built, e.g. "Built at SmartSource Consulting SAL". Optional. */
+  context?: string;
+  /** Your role, e.g. "Solo project, built end to end". Hidden when unset. */
+  role?: string;
   summary: string;
   /** Capabilities of the system. Only what is actually known; may be empty. */
   features: string[];
   stack: string[];
-  /** Left-to-right flow rendered as a schematic. */
+  /** How the stack fits together. Only what follows from the stack and the diagram. */
+  approach?: string;
+  /** Technical decisions with their reasons, in your words. Hidden while empty. */
+  decisions?: ProjectDecision[];
+  /** Top-to-bottom flow rendered as an interactive schematic. */
   architecture: ArchitectureNode[];
-  /** Optional side modules rendered under the schematic. */
+  /** Optional side modules attached to the middle node of the schematic. */
   modules?: string[];
   /** Add real URLs only. With an empty array only the "Ask me about" link is shown. */
   links: ProjectLink[];
   /** Case study: what the project is for, in plain words. Leave undefined if unknown. */
   purpose?: string;
-  /** Case study: e.g. "Completed". Leave undefined if unknown; it is hidden then. */
+  /** Case study: e.g. "In use". Leave undefined if unknown; it is hidden then. */
   status?: string;
   /** Optional screenshot in /public. Leave undefined to use the schematic visual. */
   image?: { src: string; alt: string; width: number; height: number };
@@ -119,7 +142,6 @@ export interface FocusArea {
   title: string;
   description: string;
   icon: IconName;
-  tags: string[];
   /** Bento sizing on large screens. */
   size: "wide" | "regular";
 }

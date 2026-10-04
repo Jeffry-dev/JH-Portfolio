@@ -21,6 +21,7 @@ export const education: EducationItem[] = [
     period: "Mar 2025 – Aug 2025",
     kind: "training",
     note: "Laravel, databases, Git and API development, completed as part of my internship.",
+    noteLink: { label: "See the internship", href: "#experience-xpertbot" },
   },
   {
     id: "chafic-souhaid",

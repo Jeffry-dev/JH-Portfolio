@@ -48,20 +48,6 @@ export function FocusAreas() {
                 >
                   {area.description}
                 </p>
-
-                <ul
-                  aria-label={`${area.title}: related skills`}
-                  className="mt-auto flex flex-wrap gap-x-3 gap-y-1.5 pt-4 sm:pt-7"
-                >
-                  {area.tags.map((tag) => (
-                    <li key={tag} className="font-mono text-xs text-fg-subtle">
-                      <span aria-hidden="true" className="mr-1.5 text-accent/70 light:text-accent">
-                        /
-                      </span>
-                      {tag}
-                    </li>
-                  ))}
-                </ul>
               </article>
             </Reveal>
           ))}

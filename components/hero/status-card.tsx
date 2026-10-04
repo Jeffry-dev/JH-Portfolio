@@ -18,7 +18,7 @@ export function StatusCard({ className }: StatusCardProps) {
 
   const rows = [
     { label: "Status", value: statusCard.status },
-    { label: "Focus", value: statusCard.focus.join(" · ") },
+    { label: "Availability", value: statusCard.availability ?? "" },
     { label: "Stack", value: statusCard.stack.join(" · ") },
     { label: "Based in", value: `${location.city}, ${location.country}` },
   ];

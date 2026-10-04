@@ -69,7 +69,7 @@ export default function Home() {
           id,
           title,
           category,
-          keywords: [context, ...stack, ...(modules ?? [])],
+          keywords: [...(context ? [context] : []), ...stack, ...(modules ?? [])],
         }))}
         email={profile.contact.email}
         phone={profile.contact.phone}

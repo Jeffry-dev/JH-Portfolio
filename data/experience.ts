@@ -2,7 +2,9 @@ import type { ExperienceItem } from "@/lib/types";
 
 /**
  * Work history, newest first.
- * Source: CV + updated information (SmartSource role from Nov 2025; Amusement Center job ended Nov 2025).
+ * Source: CV + updated information (SmartSource role from Nov 2025, confirmed by the owner:
+ * mostly development on SmartHub, plus IT support with basic networking; Amusement Center job
+ * ended Nov 2025).
  */
 export const experience: ExperienceItem[] = [
   {
@@ -14,18 +16,14 @@ export const experience: ExperienceItem[] = [
     startISO: "2025-11",
     current: true,
     kind: "primary",
-    // TODO: replace with your actual responsibilities and add concrete `highlights`.
-    summary: "Current IT Specialist role, focused on IT support and systems.",
-    highlights: [],
-    tags: [
-      "Windows Server",
-      "Active Directory",
-      "Group Policy",
-      "DNS",
-      "DHCP",
-      "Networking",
-      "Troubleshooting",
+    summary:
+      "Mostly software development, as part of the team building SmartHub, the company’s attendance and billing platform. I also handle IT support, including basic networking.",
+    highlights: [
+      "Full-stack development in the SmartHub team, working across the Next.js frontend and the backend.",
+      "IT support and troubleshooting for the company, including basic networking.",
     ],
+    tags: ["Full-stack development", "IT support", "Networking", "Troubleshooting"],
+    projects: ["smarthub"],
   },
   {
     id: "xpertbot",
@@ -83,7 +81,7 @@ export const experience: ExperienceItem[] = [
   {
     id: "mcdonalds",
     role: "Cashier",
-    company: "McDonald's",
+    company: "McDonald’s",
     start: "Aug 2022",
     end: "Dec 2022",
     startISO: "2022-08",
