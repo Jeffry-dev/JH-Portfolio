@@ -1,9 +1,9 @@
-/* Cursor-aware ambient light, section indicator, micro-interactions. */
+/* Cursor-aware ambient light, touch counterparts of the pointer effects, and link micro-interactions. */
 
 /* ------------------------------------------------------------------
    Ambient cursor layer (components/motion/ambient-cursor.tsx)
-   Sits between the page backdrop (z -10) and content. Hidden until the
-   pointer moves; fades out when it leaves the window.
+   Sits between the page backdrop (z -10) and content. Desktop: hidden until the pointer
+   moves, fades out when it leaves the window. Touch: lights up at each tap, lingers, fades.
    ------------------------------------------------------------------ */
 .ambient-cursor {
   position: fixed;
@@ -13,6 +13,9 @@
   overflow: hidden;
   opacity: 0;
   transition: opacity 600ms var(--ease-out-quart);
+  /* Diameter of the light and strength of its core; the touch block below shrinks both. */
+  --light-size: 760px;
+  --light-core: 7%;
 }
 
 .ambient-cursor[data-active="true"] {
@@ -23,17 +26,26 @@
   position: absolute;
   left: 0;
   top: 0;
-  width: 760px;
-  height: 760px;
+  width: var(--light-size);
+  height: var(--light-size);
   border-radius: 9999px;
-  background: radial-gradient(closest-side, color-mix(in srgb, var(--color-glow) 7%, transparent), transparent);
-  transform: translate3d(calc(var(--ax, -2000px) - 380px), calc(var(--ay, -2000px) - 380px), 0);
+  background: radial-gradient(
+    closest-side,
+    color-mix(in srgb, var(--color-glow) var(--light-core), transparent),
+    transparent
+  );
+  transform: translate3d(
+    calc(var(--ax, -2000px) - var(--light-size) / 2),
+    calc(var(--ay, -2000px) - var(--light-size) / 2),
+    0
+  );
 }
 
 /* The page grid, slightly stronger, visible only in a soft circle around the pointer.
    The window moves with a transform; inside it a grid tile is shifted by (pointer mod 72px)
    so its lines stay aligned with the backdrop grid. Both moves are compositor-only, so the
-   grid is rasterized once instead of repainted every frame. */
+   grid is rasterized once instead of repainted every frame. The window stays 440px on every
+   device (the JS offset math depends on it); the touch block softens its mask instead. */
 .ambient-grid {
   position: absolute;
   left: 0;
@@ -59,9 +71,107 @@
   transform: translate3d(calc(var(--gx, 0px) * -1), calc(var(--gy, 0px) * -1), 0);
 }
 
-@media (prefers-reduced-motion: reduce), (hover: none), (pointer: coarse) {
+/* Touch devices: a smaller, softer light that blooms in quickly (250ms) at the tap and
+   fades out slowly (900ms) once the component drops data-active, about 1.2s later. */
+@media (hover: none), (pointer: coarse) {
+  .ambient-cursor {
+    --light-size: 460px;
+    --light-core: 9%;
+    transition-duration: 900ms;
+  }
+
+  .ambient-cursor[data-active="true"] {
+    transition-duration: 250ms;
+  }
+
+  .ambient-grid {
+    mask-image: radial-gradient(closest-side, #000, transparent 70%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
   .ambient-cursor {
     display: none;
+  }
+}
+
+/* ------------------------------------------------------------------
+   Touch counterparts of the pointer effects
+   (.tilt and .magnetic-inner base rules live in app/globals.css.)
+   ------------------------------------------------------------------ */
+
+/* Terminal idle float (components/motion/tilt.tsx sets data-idle where no orientation sensor
+   can be read without a prompt): the card lifts 4px and tips 0.6deg over 2.4s, twice (under
+   five seconds in all, so it needs no pause control), with the glare softly breathing in step. Transform and opacity only. Paused while the
+   visitor types in it (focus inside) and while it is off-screen; none with reduced motion. */
+.tilt[data-idle] > * {
+  animation: tilt-idle 2.4s ease-in-out 2;
+}
+
+.tilt[data-idle] .tilt-glare {
+  opacity: 0.5;
+  animation: tilt-idle-glare 2.4s ease-in-out 2;
+}
+
+.tilt[data-idle]:focus-within > *,
+.tilt[data-idle]:focus-within .tilt-glare,
+.tilt[data-idle][data-offscreen="true"] > *,
+.tilt[data-idle][data-offscreen="true"] .tilt-glare {
+  animation-play-state: paused;
+}
+
+@keyframes tilt-idle {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) rotateX(0deg);
+  }
+  50% {
+    transform: translate3d(0, -4px, 0) rotateX(0.6deg);
+  }
+}
+
+@keyframes tilt-idle-glare {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+/* Magnetic button press bloom (components/motion/magnetic.tsx sets data-pressed on touch):
+   the inner element settles to 0.97 and a brief accent ring glows around the pill. The ring
+   is on the wrapper, which carries the button's radius so the glow follows its shape.
+   Two class selectors: this file is imported before the .magnetic-inner base rule in
+   app/globals.css, which would otherwise win the transition list. */
+.magnetic .magnetic-inner {
+  border-radius: 9999px;
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 0%, transparent);
+  transition:
+    transform 0.45s var(--ease-out-expo),
+    box-shadow 350ms var(--ease-out-quart);
+}
+
+.magnetic[data-pressed] .magnetic-inner {
+  transform: translate3d(var(--mag-x, 0px), var(--mag-y, 0px), 0) scale(0.97);
+  box-shadow:
+    0 0 0 6px color-mix(in srgb, var(--color-accent) 22%, transparent),
+    0 0 28px 4px color-mix(in srgb, var(--color-accent) 30%, transparent);
+  transition:
+    transform 150ms var(--ease-out-quart),
+    box-shadow 150ms var(--ease-out-quart);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tilt[data-idle] > *,
+  .tilt[data-idle] .tilt-glare {
+    animation: none !important;
+  }
+
+  .magnetic[data-pressed] .magnetic-inner {
+    transform: none;
+    box-shadow: none;
   }
 }
 
@@ -69,27 +179,42 @@
    Micro-interactions
    ------------------------------------------------------------------ */
 
-/* Smooth underline for text links: grows from the left on hover/focus. */
+/* Smooth underline for text links: grows from the left on hover or keyboard focus. Put it on the
+   link itself, or on the text inside a .group link (the whole padded link then triggers it).
+   Hover is limited to devices that can hover, so a tap never leaves it stuck. */
 .link-underline {
   background-image: linear-gradient(currentColor, currentColor);
   background-size: 0% 1px;
   background-position: 0 100%;
   background-repeat: no-repeat;
-  transition: background-size 350ms var(--ease-out-expo), color 200ms ease;
+  transition:
+    background-size 300ms var(--ease-out-expo),
+    color 200ms var(--ease-out-quart);
 }
 
-.link-underline:hover,
-.link-underline:focus-visible {
+.link-underline:focus-visible,
+.group:focus-visible .link-underline {
   background-size: 100% 1px;
 }
 
-/* Arrow that turns from → into ↗ on hover of its .group parent. */
+@media (hover: hover) {
+  .link-underline:hover,
+  .group:hover .link-underline {
+    background-size: 100% 1px;
+  }
+}
+
+/* Arrow that turns from → into ↗ on hover or keyboard focus of its .group parent. */
 .arrow-turn {
   transition: transform 300ms var(--ease-out-expo);
 }
 
-.group:hover .arrow-turn,
 .group:focus-visible .arrow-turn {
   transform: translate3d(2px, -1px, 0) rotate(-45deg);
 }
 
+@media (hover: hover) {
+  .group:hover .arrow-turn {
+    transform: translate3d(2px, -1px, 0) rotate(-45deg);
+  }
+}

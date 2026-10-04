@@ -5,6 +5,7 @@ import { profile } from "@/data/profile";
 import { siteUrl } from "@/lib/site";
 import { Backdrop } from "@/components/layout/backdrop";
 import { RevealObserver } from "@/components/motion/reveal-observer";
+import { ScrollFallback } from "@/components/motion/scroll-fallback";
 import { AmbientCursor } from "@/components/motion/ambient-cursor";
 import "./globals.css";
 
@@ -90,9 +91,12 @@ export const viewport: Viewport = {
  * Runs before first paint:
  * - applies the saved theme, or the OS setting, so there is no flash of the wrong theme;
  * - marks the document as JS-enabled so reveal animations may hide content, and shows
- *   everything anyway if the reveal script hasn't started within 4s.
+ *   everything anyway if the reveal script hasn't started within 4s;
+ * - adds `scroll-timelines` when the browser runs CSS scroll-driven animations natively, so
+ *   the stylesheet's `html:not(.scroll-timelines)` fallback rules (fed by <ScrollFallback />)
+ *   never show for a frame on browsers that don't need them.
  */
-const bootScript = `(function(){var d=document.documentElement;var t;try{t=localStorage.getItem("theme")}catch(e){}if(t!=="light"&&t!=="dark"){t=window.matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"}d.dataset.theme=t;d.classList.add("js");setTimeout(function(){if(!d.dataset.revealReady)d.classList.add("reveal-fallback")},4000)})();`;
+const bootScript = `(function(){var d=document.documentElement;var t;try{t=localStorage.getItem("theme")}catch(e){}if(t!=="light"&&t!=="dark"){t=window.matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"}d.dataset.theme=t;d.classList.add("js");if(window.CSS&&CSS.supports&&CSS.supports("animation-timeline: scroll()"))d.classList.add("scroll-timelines");setTimeout(function(){if(!d.dataset.revealReady)d.classList.add("reveal-fallback")},4000)})();`;
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
@@ -120,6 +124,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
         <AmbientCursor />
         {children}
         <RevealObserver />
+        <ScrollFallback />
       </body>
     </html>
   );
