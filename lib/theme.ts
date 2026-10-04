@@ -26,19 +26,52 @@ function savedTheme(): Theme | null {
   }
 }
 
+/**
+ * Points the browser UI color (e.g. the Android toolbar) at the current page background. Both
+ * theme-color metas get it, because their media queries follow the OS, not a saved choice.
+ */
+function syncThemeColor() {
+  const background = getComputedStyle(document.documentElement).getPropertyValue("--color-bg").trim();
+  if (!background) return;
+  document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]').forEach((meta) => {
+    meta.content = background;
+  });
+}
+
 /** Applies a theme to <html>, keeps the browser UI color in sync and notifies subscribers. */
 function applyTheme(theme: Theme) {
-  const root = document.documentElement;
-  root.dataset.theme = theme;
-  const background = getComputedStyle(root).getPropertyValue("--color-bg").trim();
-  document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]').forEach((meta) => {
-    if (background) meta.content = background;
-  });
+  document.documentElement.dataset.theme = theme;
+  syncThemeColor();
   listeners.forEach((listener) => listener());
+}
+
+let themeColorSynced = false;
+
+/**
+ * Fallback for browsers without the View Transitions API: <html> carries this class while the
+ * theme changes, and styles/navbar.css transitions every colour over 250 ms. Removed a little
+ * later than that, so no transition is cut short.
+ */
+const FADE_CLASS = "theme-fade";
+const FADE_MS = 300;
+let fadeTimer: number | undefined;
+
+function applyThemeWithFade(theme: Theme) {
+  const root = document.documentElement;
+  window.clearTimeout(fadeTimer);
+  root.classList.add(FADE_CLASS);
+  applyTheme(theme);
+  fadeTimer = window.setTimeout(() => root.classList.remove(FADE_CLASS), FADE_MS);
 }
 
 function subscribe(listener: () => void) {
   listeners.add(listener);
+  // Runs after hydration, so React has already placed the metas. The boot script may have applied
+  // a saved theme that differs from the OS setting the metas were chosen by.
+  if (!themeColorSynced) {
+    themeColorSynced = true;
+    syncThemeColor();
+  }
   // Follow the OS setting until the visitor picks a theme themselves.
   const system = window.matchMedia("(prefers-color-scheme: light)");
   const onSystemChange = () => {
@@ -59,7 +92,7 @@ export function useTheme(): Theme | null {
 /**
  * Switches theme and remembers the choice. Where the View Transitions API is available,
  * the new theme is revealed by a circle growing from `origin` (e.g. the clicked button);
- * with reduced motion it switches instantly.
+ * elsewhere the colours cross-fade over 250 ms; with reduced motion it switches instantly.
  */
 export function setTheme(next: Theme, origin?: { x: number; y: number }) {
   try {
@@ -68,9 +101,12 @@ export function setTheme(next: Theme, origin?: { x: number; y: number }) {
     // Storage can be unavailable (private mode); the switch still works for this visit.
   }
 
-  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  if (reduceMotion || typeof document.startViewTransition !== "function") {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
     applyTheme(next);
+    return;
+  }
+  if (typeof document.startViewTransition !== "function") {
+    applyThemeWithFade(next);
     return;
   }
 
