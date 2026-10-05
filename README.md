@@ -1,6 +1,6 @@
 # Jeffry Harfouche Portfolio
 
-Personal portfolio for **Jeffry Harfouche, IT Specialist**. A single-page site built with Next.js (App Router), React, TypeScript and Tailwind CSS v4. It's fully static: no backend, no database, and no animation library.
+Personal portfolio for **Jeffry Harfouche, IT Specialist**. A single-page site built with Next.js (App Router), React, TypeScript and Tailwind CSS v4. It's fully static: no backend, no database, and no animation library (only Lenis, a small module that smooths mouse-wheel scrolling).
 
 ## Stack
 
@@ -8,7 +8,7 @@ Personal portfolio for **Jeffry Harfouche, IT Specialist**. A single-page site b
 | --- | --- |
 | Framework | Next.js 16 (App Router, Turbopack) |
 | UI | React 19, Tailwind CSS v4 (tokens in `app/globals.css`, feature styles in `/styles`) |
-| Motion | Plain CSS: scroll-driven animations, transitions and keyframes (including the mobile menu and the navbar section indicator), plus a small IntersectionObserver reveal system. Everything respects reduced motion and works without JavaScript. |
+| Motion | Plain CSS: scroll-driven animations, transitions and keyframes (including the mobile menu and the navbar section indicator), plus a small IntersectionObserver reveal system. Smooth wheel scrolling uses Lenis (about 5 KB gzipped, loaded only with a mouse or trackpad). Everything respects reduced motion and works without JavaScript. |
 | Icons | `lucide-react` (+ inline GitHub / LinkedIn marks) |
 | Fonts | Bricolage Grotesque, Instrument Sans, JetBrains Mono via `next/font` (self-hosted) |
 
@@ -95,10 +95,11 @@ Motion follows a hierarchy: the hero and the project diagrams move the most, the
 
 - **Hero**: the name rises letter by letter and the rest settles within about 1.2 s, then a weight wave sweeps across the name once (on phones, tapping the name replays it from the tapped letter); on desktop, letters near the cursor gain a little weight (variable font). The terminal's frame breathes while the intro types, printed lines land one after another and running a command flashes the prompt. The terminal tilts slightly toward the cursor (or with the phone) and settles flat while you type in it; the primary call to action is magnetic and blooms when pressed. The status bar's cells rise in sequence.
 - **Scroll**: reading-progress bar, hero layers that move at slightly different speeds (on every screen size), section dividers that draw in as they enter, an experience timeline that draws itself while its markers ignite and the role card in the middle of the screen warms its border, and project architecture diagrams that draw node by node, then light up from top to bottom as data flows through them; each case study settles in piece by piece (index, title, rows, chips) and a soft light band sweeps across the card once. The navbar subtitle shows the section you are reading, and on desktop a pill glides along the navbar to the current section's link.
+- **Smooth scrolling**: with a mouse wheel or trackpad, the page glides to each wheel step instead of jumping, and quick steps merge into one glide (Lenis, `components/motion/smooth-scroll.tsx`). It is still the page that scrolls, so every scroll effect above follows the glide. Anchor jumps, the keyboard and the scrollbar keep the browser's own scrolling, and any click or key press stops a glide on the spot. The wheel over the terminal output scrolls the output, and the page never moves behind the open menu or command palette. Phones and tablets keep their native touch scrolling, which already glides with momentum, and never download Lenis.
 - **Technology band**: a continuous marquee; both rows move at the same slow speed. It stops only when you press its Pause button (it also rests, invisibly, while off-screen or in a background tab).
 - **Reveals**: the About and Contact statements rise word by word; other content fades up 16px as it enters the viewport, and inside cards icon tiles pop in while lines, rows and fields stagger in 60 ms apart. Section eyebrows draw their hairline, the technology band slides in from both sides, and the footer staggers in. Scrolling back up never replays anything, but once a section has gone back below the screen, scrolling down to it again plays its entrance again, like a fresh load (from anywhere on the page, not only from the top). Sections skipped by a jump appear without an entrance, and moving keyboard focus into content shows it at once. Logic: `components/motion/reveal-observer.tsx`.
 - **Feedback**: taps light links, arrows and card edges the way hover does; the theme toggle spins its icon and pulses on switch (a circle grows from the toggle where the View Transitions API exists, elsewhere the colours cross-fade); the "JH" tile in the navbar sweeps a light on hover, focus and tap; the mobile menu's rows stagger in and out; tapping the terminal skips its typed intro; the contact mail circle sends out one ring when the section appears, form fields grow an accent line on focus, the Send button turns green with a tick after a message is sent, errors shake once, and the copy button pops its "Copied" label.
-- **Accessibility**: `prefers-reduced-motion` shows the final state with no parallax, scrubbing, delays or pointer effects; nothing loops on its own for more than a few seconds unless it can be paused; content is visible without JavaScript and when printing.
+- **Accessibility**: `prefers-reduced-motion` shows the final state with no parallax, scrubbing, delays, smooth scrolling or pointer effects; nothing loops on its own for more than a few seconds unless it can be paused; content is visible without JavaScript and when printing.
 
 ## Fonts
 
@@ -115,7 +116,7 @@ components/
   contact/        contact form, copy-to-clipboard button
   hero/           interactive terminal, status bar, kinetic name
   layout/         navbar (with section indicator and CSS mobile menu), footer, page backdrop
-  motion/         reveal system, scroll fallback, ambient light, magnetic, tilt, spotlight, marquee toggle
+  motion/         reveal system, scroll fallback, smooth scrolling, ambient light, magnetic, tilt, spotlight, marquee toggle
   projects/       case study card, architecture diagram (server) and its explorer (client island)
   sections/       one component per page section
   skills/         Technical DNA
@@ -135,6 +136,7 @@ styles/           feature stylesheets (ambient, architecture, command palette, n
 5. Check 390×844, 768×1024, 1024×768, 1280×720 and 1440×900 in both themes.
 6. Turn on reduced motion, then turn off JavaScript, then open print preview in dark mode.
 7. Keyboard only: skip link, command palette (`Ctrl`/`Cmd + K`, search "Windows Server", `help`), Technical DNA (arrows, Enter, Escape), an architecture diagram (arrows, Enter, Escape), terminal (`help`, Up/Down), mobile menu, contact form errors.
-8. Screen reader spot check: landmarks, the h1 and h2 list, a pinned diagram part, the copy-email announcement.
-9. Social preview in LinkedIn's Post Inspector once deployed.
-10. Lighthouse (mobile): performance, accessibility, SEO.
+8. Mouse wheel: the page glides and a click stops it; over the terminal output (after `help`) only the output scrolls; with the command palette open, or the mobile menu in a narrow window, the page stays put.
+9. Screen reader spot check: landmarks, the h1 and h2 list, a pinned diagram part, the copy-email announcement.
+10. Social preview in LinkedIn's Post Inspector once deployed.
+11. Lighthouse (mobile): performance, accessibility, SEO.
