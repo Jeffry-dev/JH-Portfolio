@@ -9,7 +9,7 @@
  *   choose the touch-native version of an effect (tap glow, tap ripple, orientation tilt).
  * - pointerEffectsAllowed(): motion is allowed AND the primary input is a hover-capable fine
  *   pointer. Gates every cursor-following effect (ambient light, magnetic button, terminal
- *   tilt, kinetic name, card spotlights).
+ *   tilt, kinetic name, card spotlights) and the smooth wheel scrolling.
  *
  * The two device checks are complementary: a device is either a fine hover pointer or a touch
  * device, so a pointer path and a touch path never run at the same time.

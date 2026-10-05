@@ -6,6 +6,7 @@ import { siteUrl } from "@/lib/site";
 import { Backdrop } from "@/components/layout/backdrop";
 import { RevealObserver } from "@/components/motion/reveal-observer";
 import { ScrollFallback } from "@/components/motion/scroll-fallback";
+import { SmoothScroll } from "@/components/motion/smooth-scroll";
 import { AmbientCursor } from "@/components/motion/ambient-cursor";
 import "./globals.css";
 
@@ -125,6 +126,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
         {children}
         <RevealObserver />
         <ScrollFallback />
+        <SmoothScroll />
       </body>
     </html>
   );
