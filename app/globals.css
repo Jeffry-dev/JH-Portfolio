@@ -600,7 +600,8 @@ html:not(.scroll-timelines) main > section + section::after {
    Reveal system
    Hidden states apply only while <html> has `.js` (set before first paint by an
    inline script). <RevealObserver /> adds `.is-revealed` as elements enter the
-   viewport. If it never runs, `.reveal-fallback` shows everything.
+   viewport. If it never runs, `.reveal-fallback` shows everything; if it starts late, it
+   swaps that for `.reveal-late` and these rules apply again below the screen.
    Distances are tiered through Reveal's `y` prop (default 16px).
    ================================================================== */
 [data-reveal] {

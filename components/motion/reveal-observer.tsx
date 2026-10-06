@@ -7,6 +7,10 @@ const REVEALED = "is-revealed";
 const INSTANT = "reveal-instant";
 /** Stays until the element is re-armed: reveal-only animations (e.g. DNA wires) don't replay. */
 const SETTLED = "reveal-settled";
+/** Added to <html> by the boot script (app/layout.tsx) when this component has not started within 4 s. */
+const FALLBACK = "reveal-fallback";
+/** Replaces FALLBACK when this component starts after all: a slow load, not a missing script. */
+const LATE = "reveal-late";
 /**
  * How far below the bottom edge (in viewport heights) a revealed element must be before it is
  * re-armed. The margin keeps a small scroll back and forth from replaying what was just shown.
@@ -34,12 +38,16 @@ const REARM_DISTANCE = 0.25;
  *
  * Elements are only hidden while `<html>` has the `js` class (set by an inline script before
  * first paint). If this component never mounts, the script's timeout adds `reveal-fallback`
- * and everything is shown. Content never depends on JavaScript.
+ * and everything is shown. Content never depends on JavaScript. If it mounts after that (a
+ * slow first load, e.g. a dev server still compiling or a slow phone), it takes over instead of
+ * leaving the page static: everything on screen or above stays as it was shown, the fallback
+ * becomes `reveal-late`, and everything below enters as usual.
  */
 export function RevealObserver() {
   useEffect(() => {
     const root = document.documentElement;
     root.dataset.revealReady = "true";
+    const late = root.classList.contains(FALLBACK);
 
     const elements = Array.from(document.querySelectorAll<HTMLElement>("[data-reveal]"));
     if (!("IntersectionObserver" in window)) {
@@ -103,6 +111,15 @@ export function RevealObserver() {
     };
 
     elements.forEach((el) => observer.observe(el));
+
+    if (late) {
+      // The fallback is showing everything. Keep what is on screen or above as it is; the rest
+      // is hidden again while off screen and enters normally from here on.
+      for (const el of elements) {
+        if (el.getBoundingClientRect().top < window.innerHeight) reveal(el, true);
+      }
+      root.classList.replace(FALLBACK, LATE);
+    }
 
     // Jumps can carry an element from below the screen to above it without it ever
     // intersecting, which IntersectionObserver never reports. Scrolling up re-arms what has

@@ -232,11 +232,14 @@ export function Terminal({ data }: TerminalProps) {
   const typing = step >= 0 && !done;
   const hasOutputAbove = !cleared || entries.length > 0;
 
-  // Start the session (or show it finished under reduced motion / the reveal fallback).
+  // Start the session, or show it finished: under reduced motion, and when the page's scripts
+  // started late, since the reveal fallback has already shown the finished session.
   useEffect(() => {
+    const { classList } = document.documentElement;
     const instant =
       window.matchMedia("(prefers-reduced-motion: reduce)").matches ||
-      document.documentElement.classList.contains("reveal-fallback");
+      classList.contains("reveal-fallback") ||
+      classList.contains("reveal-late");
     const timer = window.setTimeout(
       () => setStep((current) => (current < 0 ? (instant ? intro.length : 0) : current)),
       instant ? 0 : START_DELAY_MS,

@@ -92,7 +92,8 @@ export const viewport: Viewport = {
  * Runs before first paint:
  * - applies the saved theme, or the OS setting, so there is no flash of the wrong theme;
  * - marks the document as JS-enabled so reveal animations may hide content, and shows
- *   everything anyway if the reveal script hasn't started within 4s;
+ *   everything anyway if the reveal script hasn't started within 4s (if it starts later, it
+ *   takes over again; see RevealObserver);
  * - adds `scroll-timelines` when the browser runs CSS scroll-driven animations natively, so
  *   the stylesheet's `html:not(.scroll-timelines)` fallback rules (fed by <ScrollFallback />)
  *   never show for a frame on browsers that don't need them.

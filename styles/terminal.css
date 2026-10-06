@@ -47,9 +47,10 @@
    Scripted intro
    Lines that have not been typed yet are removed from layout only while JS runs
    (html.js), so visitors without JavaScript see the finished session.
-   If hydration never happens, .reveal-fallback shows everything as well.
+   If hydration never happens, .reveal-fallback shows everything as well. If it happens late,
+   .reveal-late keeps the finished session that was already shown (the intro is not typed).
    ------------------------------------------------------------------ */
-.js:not(.reveal-fallback) .term-pending {
+.js:not(.reveal-fallback):not(.reveal-late) .term-pending {
   display: none;
 }
 
