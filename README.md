@@ -22,6 +22,8 @@ npm run start    # serve the production build
 npm run lint     # ESLint
 ```
 
+To try the site on a phone on the same Wi-Fi, open the Network address that `npm run dev` prints (e.g. `http://192.168.1.110:3000`). `next.config.ts` lets this computer's own addresses use the dev server; if the address changes (a new Wi-Fi network), restart `npm run dev`.
+
 ## Page order
 
 About (01), What I do (02), Experience (03), Projects (04), Skills (05), Education (06), Contact (07). Projects come before Skills so the Technical DNA recaps work the reader has just seen. The order and numbers live in `data/navigation.ts`; `app/page.tsx` renders the sections in the same order.
